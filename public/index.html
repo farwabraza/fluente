@@ -227,18 +227,40 @@ const DEFAULT_STATE = {
 };
 let S = JSON.parse(JSON.stringify(DEFAULT_STATE));
 let storageOK = true;
+let CREDS = null; try{ CREDS = JSON.parse(localStorage.getItem('fluente-creds')||'null'); }catch(e){}
+let syncTimer = null, syncStatus = 'local';
 
 async function loadState(){
   try{
     const v = localStorage.getItem('fluente-state');
     if(v){ S = Object.assign({}, DEFAULT_STATE, JSON.parse(v)); }
   }catch(e){ /* first run */ }
+  if(CREDS){
+    try{
+      const r = await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(CREDS)});
+      const d = await r.json();
+      if(d.ok){
+        syncStatus='cloud';
+        if(d.state && (+d.updatedAt||0) >= (S._ts||0)){ S = Object.assign({}, DEFAULT_STATE, d.state); }
+        else if(S.placed){ pushState(); } // this device is newer — upload it
+      } else if(r.status===401){ CREDS=null; localStorage.removeItem('fluente-creds'); syncStatus='local'; }
+    }catch(e){ syncStatus='offline'; }
+  }
   if(!S.deck) S.deck = buildStarterDeck();
   if(!S.xpLog) S.xpLog = {};
 }
 async function save(){
+  S._ts = Date.now();
   try{ localStorage.setItem('fluente-state', JSON.stringify(S)); }
   catch(e){ storageOK=false; }
+  if(CREDS){ clearTimeout(syncTimer); syncTimer=setTimeout(pushState, 1500); }
+}
+async function pushState(){
+  if(!CREDS) return;
+  try{
+    const r = await fetch('/api/state',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.assign({}, CREDS, {state:S, updatedAt:S._ts}))});
+    syncStatus = r.ok ? 'cloud' : 'offline';
+  }catch(e){ syncStatus='offline'; }
 }
 if('serviceWorker' in navigator){ window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{})); }
 
@@ -608,6 +630,12 @@ function renderOggi(){
       <div class="eyebrow">WHY THIS WORKS</div>
       <p style="font-size:.86rem"><b>4 tiny missions > 1 heroic session.</b> Each hits a different skill (input, output, retention, production). Done daily, this is the comprehensible-input + forced-output loop that actually produces fluency — the same loop you'd never sustain with a 90-minute textbook block.</p>
     </div>
+    <button class="mission" id="syncRow" style="background:${CREDS?'#EAF4EF':'#fff'}">
+      <span style="font-size:1.2rem">${CREDS?'☁️':'📴'}</span>
+      <span><b>${CREDS?'Synced as '+esc(CREDS.username):'This device only'}</b><br>
+      <span class="muted">${CREDS?(syncStatus==='offline'?'offline — will sync when connected':'progress follows you on every device'):'sign in so progress follows you everywhere'}</span></span>
+      <span class="st-go" style="margin-left:auto">${CREDS?'SIGN OUT':'SIGN IN'}</span>
+    </button>
   </div>`;
   $('#m1').onclick=()=>setTab('linea');
   $('#m2').onclick=()=>setTab('parla');
@@ -615,6 +643,7 @@ function renderOggi(){
   $('#m4').onclick=()=>renderScrivi();
   $('#bDett').onclick=renderDettato;
   $('#bSpr').onclick=renderSprint;
+  $('#syncRow').onclick=()=>{ if(CREDS){ if(confirm('Sign out on this device? Your cloud progress stays safe.')) signOut(); } else renderLogin(); };
 }
 
 const PROMPTS = ['Descrivi la tua giornata in ospedale (vera o immaginaria).','Qual è il tuo cibo italiano preferito e perché?','Racconta un paziente (inventato!) che ti ha colpito.','Cosa farai questo weekend?','Descrivi Milano a un turista in tre frasi.','Perché hai scelto medicina?','Racconta l\'ultima cosa che ti ha fatto ridere.'];
@@ -1286,13 +1315,62 @@ function gradeCard(c,g){
 }
 
 /* =========================================================
+   LOGIN — one username + PIN, works on every device
+========================================================= */
+function renderLogin(){
+  $('#nav').style.display='none';
+  main.innerHTML = `
+  <div class="onb-hero fadein">
+    <div class="eyebrow r">UN BIGLIETTO, TUTTI I DISPOSITIVI</div>
+    <div class="big">Sign in once.<br>Your progress <em>follows you</em>.</div>
+    <p class="muted" style="margin-top:12px">Pick any username + a PIN you'll remember. First sign-in creates the account; same details on your phone, laptop, anywhere — same streak, same deck, same level.</p>
+  </div>
+  <div class="card">
+    <input class="ti" id="lgUser" placeholder="username (e.g. farwa)" autocapitalize="off" autocomplete="username" style="margin-bottom:10px">
+    <input class="ti" id="lgPin" placeholder="PIN (4+ characters)" type="password" autocomplete="current-password">
+    <button class="btn primary block" id="lgGo" style="margin-top:12px">Sign in / Create account →</button>
+    <div id="lgErr" style="color:var(--rosso);font-weight:700;font-size:.85rem;margin-top:8px"></div>
+  </div>
+  <button class="btn sm block" id="lgSkip" style="background:var(--carta2)">Skip — keep progress on this device only</button>
+  <p class="muted" style="font-size:.74rem;margin-top:10px;text-align:center">Use a throwaway PIN, not a password you use elsewhere.</p>`;
+  $('#lgGo').onclick=async()=>{
+    const username=$('#lgUser').value.trim(), pin=$('#lgPin').value;
+    if(!/^[a-z0-9_.-]{3,24}$/i.test(username)){ $('#lgErr').textContent='Username: 3–24 letters/numbers.'; return; }
+    if(pin.length<4){ $('#lgErr').textContent='PIN needs at least 4 characters.'; return; }
+    $('#lgGo').innerHTML='<span class="spinner"></span>'; $('#lgGo').disabled=true;
+    try{
+      const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,pin})});
+      const d=await r.json();
+      if(!d.ok){ $('#lgErr').textContent=(d.error&&d.error.message)||'Sign-in failed.'; $('#lgGo').disabled=false; $('#lgGo').textContent='Sign in / Create account →'; return; }
+      CREDS={username,pin}; localStorage.setItem('fluente-creds',JSON.stringify(CREDS));
+      syncStatus='cloud';
+      if(d.state && (+d.updatedAt||0) >= (S._ts||0)){ S=Object.assign({},DEFAULT_STATE,d.state); localStorage.setItem('fluente-state',JSON.stringify(S)); }
+      else if(S.placed){ pushState(); }
+      if(!S.deck) S.deck=buildStarterDeck(); if(!S.xpLog) S.xpLog={};
+      toast(d.created?'Account created ☁️':'Bentornata ☁️');
+      enterApp();
+    }catch(e){ $('#lgErr').textContent='Server unreachable — try again.'; $('#lgGo').disabled=false; $('#lgGo').textContent='Sign in / Create account →'; }
+  };
+  $('#lgSkip').onclick=()=>{ localStorage.setItem('fluente-skip-login','1'); enterApp(); };
+}
+function enterApp(){
+  renderHeader();
+  if(!S.placed){ renderOnboarding(); }
+  else{ touchStreak(); $('#nav').style.display='flex'; setTab('oggi'); }
+}
+function signOut(){
+  localStorage.removeItem('fluente-creds'); localStorage.removeItem('fluente-skip-login');
+  CREDS=null; syncStatus='local'; renderLogin();
+}
+
+/* =========================================================
    BOOT
 ========================================================= */
 (async function(){
   await loadState();
   renderHeader();
-  if(!S.placed){ renderOnboarding(); }
-  else{ touchStreak(); $('#nav').style.display='flex'; setTab('oggi'); }
+  if(!CREDS && !localStorage.getItem('fluente-skip-login')){ renderLogin(); }
+  else enterApp();
 })();
 </script>
 </body>
