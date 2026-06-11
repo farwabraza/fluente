@@ -1,0 +1,1299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FLUENTE · Italian, all the way to native</title>
+<meta name="theme-color" content="#E0312E">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="FLUENTE">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Lexend:wght@300;400;500;600;700&family=Chivo+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --carta:#F2F0EA; --carta2:#E9E6DD; --ink:#17171C; --ink2:#3A3A42;
+  --rosso:#E0312E; --rosso-dk:#B5201E; --blu:#1D3C8F; --giallo:#F2B705; --verde:#1E7A52;
+  --line:#17171C; --radius:14px;
+  --shadow: 0 2px 0 var(--ink);
+  --font-d:'Archivo Black',sans-serif; --font-b:'Lexend',sans-serif; --font-m:'Chivo Mono',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font-family:var(--font-b);background:var(--carta);color:var(--ink);font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased}
+button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+input,textarea,select{font-family:inherit;font-size:1rem}
+::selection{background:var(--giallo)}
+
+/* ============ APP SHELL ============ */
+#app{max-width:680px;margin:0 auto;min-height:100dvh;display:flex;flex-direction:column;position:relative;background:var(--carta);border-left:2px solid var(--ink);border-right:2px solid var(--ink)}
+@media(max-width:700px){#app{border:none}}
+header{position:sticky;top:0;z-index:50;background:var(--carta);border-bottom:2px solid var(--ink)}
+.hdr-strip{height:6px;background:linear-gradient(90deg,var(--rosso) 0 25%,var(--blu) 25% 50%,var(--giallo) 50% 75%,var(--verde) 75% 100%)}
+.hdr-row{display:flex;align-items:center;justify-content:space-between;padding:10px 16px}
+.logo{font-family:var(--font-d);font-size:1.3rem;letter-spacing:-.02em}
+.logo span{color:var(--rosso)}
+.hdr-stats{display:flex;gap:8px;align-items:center}
+.pill{font-family:var(--font-m);font-size:.72rem;font-weight:700;border:2px solid var(--ink);border-radius:99px;padding:3px 10px;background:#fff;box-shadow:var(--shadow)}
+.pill.lvl{background:var(--ink);color:var(--carta)}
+.pill.fire{background:var(--giallo)}
+main{flex:1;overflow-y:auto;padding:18px 16px 110px}
+
+/* ============ NAV ============ */
+nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:680px;background:var(--ink);display:flex;z-index:60;padding:6px 6px calc(6px + env(safe-area-inset-bottom))}
+nav button{flex:1;color:#9b9ba6;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 2px;font-size:.62rem;font-family:var(--font-m);font-weight:700;letter-spacing:.04em;border-radius:10px;transition:all .15s}
+nav button .ic{font-size:1.25rem;line-height:1}
+nav button.on{color:var(--carta);background:#2a2a33}
+nav button.on .dot{width:14px;height:3px;background:var(--rosso);border-radius:2px;margin-top:1px}
+nav button .dot{width:14px;height:3px;background:transparent;border-radius:2px;margin-top:1px}
+
+/* ============ GENERIC ============ */
+.card{background:#fff;border:2px solid var(--ink);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow);margin-bottom:14px}
+.card.flat{box-shadow:none}
+.eyebrow{font-family:var(--font-m);font-size:.68rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--ink2);margin-bottom:6px}
+.eyebrow.r{color:var(--rosso)} .eyebrow.b{color:var(--blu)} .eyebrow.g{color:var(--verde)}
+h1{font-family:var(--font-d);font-size:1.7rem;line-height:1.1;letter-spacing:-.02em}
+h2{font-family:var(--font-d);font-size:1.15rem;line-height:1.15;letter-spacing:-.01em;margin-bottom:8px}
+h3{font-size:.95rem;font-weight:700;margin-bottom:4px}
+.muted{color:var(--ink2);font-size:.86rem}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-weight:700;font-size:.95rem;border:2px solid var(--ink);border-radius:12px;padding:12px 20px;background:#fff;box-shadow:var(--shadow);transition:transform .08s, box-shadow .08s}
+.btn:active{transform:translateY(2px);box-shadow:none}
+.btn.primary{background:var(--rosso);color:#fff}
+.btn.dark{background:var(--ink);color:var(--carta)}
+.btn.yellow{background:var(--giallo)}
+.btn.green{background:var(--verde);color:#fff}
+.btn.sm{padding:8px 14px;font-size:.82rem;border-radius:10px}
+.btn.block{display:flex;width:100%}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.row{display:flex;gap:10px;flex-wrap:wrap}
+.tag{font-family:var(--font-m);font-size:.66rem;font-weight:700;padding:2px 8px;border-radius:6px;border:1.5px solid var(--ink)}
+.tag.a{background:var(--giallo)} .tag.bb{background:var(--blu);color:#fff} .tag.gg{background:var(--verde);color:#fff} .tag.rr{background:var(--rosso);color:#fff}
+.progressbar{height:10px;border:2px solid var(--ink);border-radius:99px;background:#fff;overflow:hidden}
+.progressbar>div{height:100%;background:var(--rosso);transition:width .4s cubic-bezier(.6,0,.2,1)}
+.spinner{width:22px;height:22px;border:3px solid var(--carta2);border-top-color:var(--rosso);border-radius:50%;animation:spin .7s linear infinite;display:inline-block;vertical-align:middle}
+@keyframes spin{to{transform:rotate(360deg)}}
+.fadein{animation:fadein .35s ease both}
+@keyframes fadein{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:96px;background:var(--ink);color:var(--carta);font-family:var(--font-m);font-size:.78rem;font-weight:700;padding:10px 18px;border-radius:99px;z-index:99;border:2px solid var(--giallo);animation:fadein .25s ease both}
+.xpfly{position:fixed;z-index:99;font-family:var(--font-d);color:var(--verde);font-size:1.2rem;pointer-events:none;animation:xpfly 1s ease forwards}
+@keyframes xpfly{from{opacity:1;transform:translateY(0)}to{opacity:0;transform:translateY(-50px)}}
+
+/* ============ ONBOARDING ============ */
+.onb-hero{padding:34px 6px 18px;text-align:left}
+.onb-hero .big{font-family:var(--font-d);font-size:2.6rem;line-height:.98;letter-spacing:-.03em}
+.onb-hero .big em{font-style:normal;color:var(--rosso)}
+.chiprow{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.chip{border:2px solid var(--ink);border-radius:99px;padding:8px 14px;font-size:.85rem;font-weight:600;background:#fff;transition:all .1s}
+.chip.on{background:var(--ink);color:var(--carta)}
+.qopt{display:block;width:100%;text-align:left;border:2px solid var(--ink);border-radius:12px;padding:12px 14px;margin-bottom:8px;background:#fff;font-size:.95rem;font-weight:500;box-shadow:var(--shadow);transition:all .1s}
+.qopt:active{transform:translateY(2px);box-shadow:none}
+.qopt.sel{background:var(--ink);color:var(--carta)}
+.qopt.right{background:var(--verde);color:#fff;border-color:var(--ink)}
+.qopt.wrong{background:var(--rosso);color:#fff}
+textarea.bigta{width:100%;min-height:130px;border:2px solid var(--ink);border-radius:12px;padding:12px;resize:vertical;background:#fff;font-size:.95rem}
+textarea.bigta:focus,input.ti:focus{outline:3px solid var(--giallo)}
+input.ti{width:100%;border:2px solid var(--ink);border-radius:12px;padding:12px;background:#fff}
+
+/* ============ LA LINEA (metro map) ============ */
+.linea-wrap{position:relative;padding:8px 0 8px 0}
+.lv-block{position:relative;margin-bottom:4px}
+.lv-head{display:flex;align-items:center;gap:10px;margin:14px 0 10px}
+.lv-badge{font-family:var(--font-d);font-size:1rem;background:var(--ink);color:var(--carta);padding:6px 12px;border-radius:8px;min-width:52px;text-align:center}
+.lv-badge.cur{background:var(--rosso)}
+.lv-name{font-family:var(--font-m);font-size:.72rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.stations{position:relative;margin-left:25px;border-left:6px solid var(--ink);padding:4px 0 14px 0}
+.stations.locked{border-left-color:#c8c5ba}
+.station{position:relative;display:flex;align-items:center;gap:14px;padding:10px 0 10px 22px;width:100%;text-align:left}
+.station::before{content:'';position:absolute;left:-15px;top:50%;transform:translateY(-50%);width:18px;height:18px;border-radius:50%;background:#fff;border:4px solid var(--ink)}
+.station.done::before{background:var(--verde)}
+.station.here::before{background:var(--rosso);box-shadow:0 0 0 5px rgba(224,49,46,.25);animation:pulse 1.6s infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 4px rgba(224,49,46,.25)}50%{box-shadow:0 0 0 9px rgba(224,49,46,.08)}}
+.station.lock{opacity:.45}
+.station.lock::before{border-color:#c8c5ba}
+.st-txt b{display:block;font-size:.92rem}
+.st-txt span{font-size:.74rem;color:var(--ink2)}
+.st-go{margin-left:auto;font-family:var(--font-m);font-size:.66rem;font-weight:700;border:2px solid var(--ink);border-radius:8px;padding:4px 8px;background:var(--giallo);white-space:nowrap}
+.station.done .st-go{background:var(--verde);color:#fff}
+
+/* ============ LESSON MODAL ============ */
+.modal{position:fixed;inset:0;background:rgba(23,23,28,.55);z-index:80;display:flex;align-items:flex-end;justify-content:center}
+.sheet{background:var(--carta);width:100%;max-width:680px;max-height:94dvh;border-radius:22px 22px 0 0;border:2px solid var(--ink);border-bottom:none;display:flex;flex-direction:column;animation:slideup .3s cubic-bezier(.4,0,.2,1) both}
+@keyframes slideup{from{transform:translateY(40px);opacity:0}to{transform:none;opacity:1}}
+.sheet-hd{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:2px solid var(--ink)}
+.sheet-hd .x{margin-left:auto;font-family:var(--font-d);font-size:1.1rem;width:36px;height:36px;border:2px solid var(--ink);border-radius:10px;background:#fff;box-shadow:var(--shadow)}
+.sheet-bd{padding:16px;overflow-y:auto;flex:1}
+.concept{background:var(--blu);color:#fff;border:2px solid var(--ink);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow);margin-bottom:14px}
+.concept h2{color:#fff}
+.concept .ex{background:rgba(255,255,255,.12);border-radius:10px;padding:10px 12px;margin-top:8px;font-size:.92rem}
+.concept .ex b{color:var(--giallo)}
+.mnemo{background:var(--giallo);border:2px solid var(--ink);border-radius:var(--radius);padding:12px 14px;box-shadow:var(--shadow);margin-bottom:14px;font-size:.92rem}
+.mnemo .eyebrow{color:var(--ink)}
+
+/* ============ PARLA (dark booth) ============ */
+.booth{background:var(--ink);color:var(--carta);border:2px solid var(--ink);border-radius:var(--radius);padding:16px;margin:-4px -4px 14px;min-height:60dvh;display:flex;flex-direction:column}
+.booth .eyebrow{color:#8a8a96}
+.chatlog{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding:6px 0;min-height:200px}
+.bub{max-width:86%;padding:10px 14px;border-radius:14px;font-size:.93rem;line-height:1.45}
+.bub.ai{background:#26262e;border:1.5px solid #3a3a44;align-self:flex-start;border-bottom-left-radius:4px}
+.bub.me{background:var(--rosso);color:#fff;align-self:flex-end;border-bottom-right-radius:4px}
+.bub .fix{display:block;margin-top:8px;padding-top:8px;border-top:1px dashed #555;font-size:.78rem;color:var(--giallo)}
+.bub .tr{display:block;font-size:.76rem;color:#9a9aa6;margin-top:4px;font-style:italic}
+.bub .spk{background:none;border:none;color:var(--giallo);font-size:.85rem;margin-left:6px;cursor:pointer}
+.micbar{display:flex;gap:10px;align-items:center;margin-top:12px}
+.micbtn{width:74px;height:74px;border-radius:50%;background:var(--rosso);border:3px solid var(--carta);color:#fff;font-size:1.7rem;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s;box-shadow:0 0 0 0 rgba(224,49,46,.5)}
+.micbtn.rec{animation:recpulse 1.2s infinite;background:#fff;color:var(--rosso)}
+@keyframes recpulse{0%{box-shadow:0 0 0 0 rgba(224,49,46,.6)}70%{box-shadow:0 0 0 18px rgba(224,49,46,0)}100%{box-shadow:0 0 0 0 rgba(224,49,46,0)}}
+.micbar input{flex:1;background:#26262e;border:2px solid #3a3a44;color:var(--carta);border-radius:12px;padding:12px}
+.scen{display:flex;gap:10px;align-items:center;border:2px solid var(--ink);background:#fff;border-radius:var(--radius);padding:12px 14px;margin-bottom:10px;width:100%;text-align:left;box-shadow:var(--shadow)}
+.scen .em{font-size:1.6rem}
+.scen b{display:block;font-size:.93rem}
+.scen span{font-size:.76rem;color:var(--ink2)}
+.scen.med{background:#EAF4EF}
+
+/* ============ MEDICINA ============ */
+.med-hero{background:var(--verde);color:#fff;border:2px solid var(--ink);border-radius:var(--radius);padding:18px;box-shadow:var(--shadow);margin-bottom:14px;position:relative;overflow:hidden}
+.med-hero h1{color:#fff;font-size:1.4rem}
+.med-hero .cross{position:absolute;right:-10px;top:-14px;font-family:var(--font-d);font-size:6rem;opacity:.15}
+
+/* ============ CINEMA ============ */
+.film{display:flex;gap:12px;border:2px solid var(--ink);background:#fff;border-radius:var(--radius);padding:12px;box-shadow:var(--shadow);margin-bottom:12px}
+.poster{width:54px;height:78px;border-radius:8px;border:2px solid var(--ink);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:1.5rem;font-family:var(--font-d);color:#fff}
+.film b{font-size:.95rem}
+.film .meta{font-size:.74rem;color:var(--ink2);margin:2px 0 4px}
+.film p{font-size:.82rem}
+.ladder{border-left:4px solid var(--rosso);padding:4px 0 4px 14px;margin:10px 0;font-size:.88rem}
+
+/* ============ SRS ============ */
+.srscard{perspective:1000px;min-height:230px;margin-bottom:14px}
+.srsinner{position:relative;width:100%;min-height:230px;transition:transform .45s;transform-style:preserve-3d}
+.srsinner.flip{transform:rotateY(180deg)}
+.srsface{position:absolute;inset:0;backface-visibility:hidden;border:2px solid var(--ink);border-radius:var(--radius);box-shadow:var(--shadow);padding:20px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:8px}
+.srsface.front{background:#fff}
+.srsface.back{background:var(--ink);color:var(--carta);transform:rotateY(180deg)}
+.srsface .word{font-family:var(--font-d);font-size:1.6rem;letter-spacing:-.02em}
+.srsface.back .word{color:var(--giallo)}
+.gradebtns{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.gradebtns .btn{padding:10px 4px;font-size:.78rem}
+
+/* misc */
+.statgrid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px}
+.stat{border:2px solid var(--ink);border-radius:var(--radius);background:#fff;box-shadow:var(--shadow);padding:12px;text-align:center}
+.stat .n{font-family:var(--font-d);font-size:1.5rem}
+.stat .l{font-family:var(--font-m);font-size:.62rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink2)}
+.mission{display:flex;align-items:center;gap:12px;border:2px solid var(--ink);background:#fff;border-radius:var(--radius);padding:12px 14px;box-shadow:var(--shadow);margin-bottom:10px;width:100%;text-align:left}
+.mission .chk{width:26px;height:26px;border:2.5px solid var(--ink);border-radius:8px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-weight:900;background:#fff}
+.mission.done{opacity:.6}
+.mission.done .chk{background:var(--verde);color:#fff}
+.feedback-box{background:#fff;border:2px solid var(--ink);border-left:8px solid var(--verde);border-radius:var(--radius);padding:14px;margin-top:12px;font-size:.9rem;white-space:pre-wrap}
+button:focus-visible,.chip:focus-visible,.qopt:focus-visible{outline:3px solid var(--giallo);outline-offset:2px}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="hdr-strip"></div>
+    <div class="hdr-row">
+      <div class="logo">FLU<span>E</span>NTE</div>
+      <div class="hdr-stats" id="hdrStats"></div>
+    </div>
+  </header>
+  <main id="main"></main>
+  <nav id="nav" style="display:none">
+    <button data-tab="oggi"><span class="ic">☀</span>OGGI<span class="dot"></span></button>
+    <button data-tab="linea"><span class="ic">Ⓜ</span>LINEA<span class="dot"></span></button>
+    <button data-tab="parla"><span class="ic">🎙</span>PARLA<span class="dot"></span></button>
+    <button data-tab="med"><span class="ic">✚</span>MEDICINA<span class="dot"></span></button>
+    <button data-tab="cinema"><span class="ic">🎞</span>CINEMA<span class="dot"></span></button>
+    <button data-tab="srs"><span class="ic">⚡</span>RIPASSO<span class="dot"></span></button>
+  </nav>
+</div>
+<div id="overlay"></div>
+
+<script>
+/* =========================================================
+   FLUENTE — Italian to native level. ADHD-first architecture:
+   one screen = one job, sessions ≤ 5 min, instant feedback,
+   speaking on day one, everything spaced-repeated.
+========================================================= */
+
+/* ---------- STATE & STORAGE (localStorage — this is a standalone PWA) ---------- */
+const DEFAULT_STATE = {
+  placed:false, level:'A1', levelIdx:0, xp:0, streak:0, lastDay:null,
+  interests:[], name:'', unitsDone:{}, missions:{}, missionDay:null,
+  deck:null, parlaTurns:0, writeDone:{}, xpLog:{}
+};
+let S = JSON.parse(JSON.stringify(DEFAULT_STATE));
+let storageOK = true;
+
+async function loadState(){
+  try{
+    const v = localStorage.getItem('fluente-state');
+    if(v){ S = Object.assign({}, DEFAULT_STATE, JSON.parse(v)); }
+  }catch(e){ /* first run */ }
+  if(!S.deck) S.deck = buildStarterDeck();
+  if(!S.xpLog) S.xpLog = {};
+}
+async function save(){
+  try{ localStorage.setItem('fluente-state', JSON.stringify(S)); }
+  catch(e){ storageOK=false; }
+}
+if('serviceWorker' in navigator){ window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{})); }
+
+/* ---------- AI (proxied through our own server — API key lives in Replit Secrets) ---------- */
+async function ai(messages, system, expectJSON=false){
+  try{
+    const res = await fetch("/api/chat",{
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({messages, system})
+    });
+    const data = await res.json();
+    if(data.error){ console.error(data.error); return expectJSON?null:"⚠ "+(data.error.message||'API error — check your key in Replit Secrets.'); }
+    let text = (data.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("\n");
+    if(expectJSON){
+      text = text.replace(/```json|```/g,'').trim();
+      const a = text.indexOf('{'), b = text.lastIndexOf('}');
+      const aa = text.indexOf('['), bb = text.lastIndexOf(']');
+      if(aa>-1 && (aa<a || a===-1)) return JSON.parse(text.slice(aa,bb+1));
+      return JSON.parse(text.slice(a,b+1));
+    }
+    return text;
+  }catch(e){ console.error('AI error',e); return expectJSON ? null : "⚠ Connection hiccup — tap to retry."; }
+}
+
+/* ---------- SPEECH ---------- */
+let voices=[], itVoice=null;
+function loadVoices(){
+  voices = speechSynthesis.getVoices();
+  itVoice = voices.find(v=>v.lang==='it-IT' && /female|alice|elsa|federica/i.test(v.name)) || voices.find(v=>v.lang&&v.lang.startsWith('it')) || null;
+}
+if('speechSynthesis' in window){ loadVoices(); speechSynthesis.onvoiceschanged = loadVoices; }
+function speak(text, rate=0.92){
+  if(!('speechSynthesis' in window)) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text.replace(/\*/g,''));
+  u.lang='it-IT'; if(itVoice) u.voice=itVoice; u.rate=rate;
+  speechSynthesis.speak(u);
+}
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+function listen(onResult, onEnd, onErr){
+  if(!SR){ onErr && onErr('nosr'); return null; }
+  const r = new SR(); r.lang='it-IT'; r.interimResults=false; r.maxAlternatives=1;
+  r.onresult = e => onResult(e.results[0][0].transcript);
+  r.onend = ()=> onEnd && onEnd();
+  r.onerror = e => onErr && onErr(e.error);
+  try{ r.start(); }catch(e){ onErr && onErr('busy'); }
+  return r;
+}
+
+/* ---------- HELPERS ---------- */
+const $ = s=>document.querySelector(s);
+const main = $('#main'), overlay = $('#overlay');
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+function toast(msg){
+  const t=document.createElement('div'); t.className='toast'; t.textContent=msg;
+  document.body.appendChild(t); setTimeout(()=>t.remove(),2200);
+}
+function gainXP(n, x, y){
+  S.xp += n; S.xpLog[today()]=(S.xpLog[today()]||0)+n; save(); renderHeader();
+  const f=document.createElement('div'); f.className='xpfly'; f.textContent='+'+n+' XP';
+  f.style.left=(x||window.innerWidth/2)+'px'; f.style.top=(y||window.innerHeight/2)+'px';
+  document.body.appendChild(f); setTimeout(()=>f.remove(),1000);
+}
+function today(){ return new Date().toISOString().slice(0,10); }
+function touchStreak(){
+  const t=today();
+  if(S.lastDay===t) return;
+  const y=new Date(); y.setDate(y.getDate()-1);
+  S.streak = (S.lastDay===y.toISOString().slice(0,10)) ? S.streak+1 : 1;
+  S.lastDay=t; save();
+}
+const LEVELS = ['A1','A2','B1','B2','C1','C2'];
+const LEVEL_NAMES = {A1:'Sopravvivenza',A2:'Quotidiano',B1:'Indipendenza',B2:'Scioltezza',C1:'Padronanza',C2:'Madrelingua'};
+
+/* =========================================================
+   DATA — CURRICULUM (La Linea). Stations encode true sequence.
+========================================================= */
+const CURRICULUM = {
+A1:[
+ {id:'a1u1',t:'Suoni & gesti',d:'Pronunciation rules · gli/gn/sc · double consonants'},
+ {id:'a1u2',t:'Ciao, mi chiamo…',d:'Greetings · essere & avere · introducing yourself'},
+ {id:'a1u3',t:'Il bar',d:'Ordering · numbers · un caffè, per favore'},
+ {id:'a1u4',t:'La famiglia',d:'Possessives · family words · -are verbs present'},
+ {id:'a1u5',t:'In giro per Milano',d:'Directions · c\'è/ci sono · -ere/-ire verbs'},
+ {id:'a1u6',t:'CHECKPOINT A1',d:'Mini oral exam — pass to unlock A2', exam:true}
+],
+A2:[
+ {id:'a2u1',t:'Ieri sera…',d:'Passato prossimo · essere vs avere auxiliaries'},
+ {id:'a2u2',t:'Da bambino…',d:'Imperfetto · childhood stories · weather'},
+ {id:'a2u3',t:'Dal medico',d:'Body parts · mi fa male · symptoms (your first medical unit!)'},
+ {id:'a2u4',t:'Fare la spesa',d:'Partitives · quantities · food vocabulary'},
+ {id:'a2u5',t:'Progetti futuri',d:'Futuro semplice · making plans · dovere/potere/volere'},
+ {id:'a2u6',t:'CHECKPOINT A2',d:'Mini oral exam — pass to unlock B1', exam:true}
+],
+B1:[
+ {id:'b1u1',t:'Secondo me…',d:'Opinions · penso che + congiuntivo presente intro'},
+ {id:'b1u2',t:'Pronomi ninja',d:'Combined pronouns · glielo, ce ne · ci & ne mastery'},
+ {id:'b1u3',t:'In ospedale',d:'Hospital departments · admission dialogue · anamnesi basics'},
+ {id:'b1u4',t:'Se potessi…',d:'Conditional · polite requests · hypotheticals type 1'},
+ {id:'b1u5',t:'Raccontami',d:'Connectives · storytelling · passato remoto recognition'},
+ {id:'b1u6',t:'CHECKPOINT B1',d:'Mini oral exam — pass to unlock B2', exam:true}
+],
+B2:[
+ {id:'b2u1',t:'Congiuntivo II',d:'Imperfect & past subjunctive · benché, affinché, sebbene'},
+ {id:'b2u2',t:'Ipotesi',d:'Periodo ipotetico types 2 & 3 · se avessi saputo…'},
+ {id:'b2u3',t:'Il colloquio clinico',d:'Full anamnesi · breaking news gently · register shifts Lei/tu'},
+ {id:'b2u4',t:'Discutere & dibattere',d:'Argumentation · concession · interrupting politely'},
+ {id:'b2u5',t:'La forma passiva',d:'Passive · si impersonale · academic register'},
+ {id:'b2u6',t:'CHECKPOINT B2',d:'Mini oral exam — pass to unlock C1', exam:true}
+],
+C1:[
+ {id:'c1u1',t:'Sfumature',d:'Nuance · synonym precision · false friends purge'},
+ {id:'c1u2',t:'Italiano accademico',d:'Presenting research · il caso clinico · formal writing'},
+ {id:'c1u3',t:'Modi di dire',d:'Idioms natives actually use · in bocca al lupo & 40 more'},
+ {id:'c1u4',t:'Registri',d:'Slang ↔ formal switching · regional flavors · email perfetta'},
+ {id:'c1u5',t:'Retorica',d:'Persuasion · humor · irony markers in speech'},
+ {id:'c1u6',t:'CHECKPOINT C1',d:'Mini oral exam — pass to unlock C2', exam:true}
+],
+C2:[
+ {id:'c2u1',t:'Cultura viva',d:'References natives expect: TV, politics, calcio, Sanremo'},
+ {id:'c2u2',t:'Dialetti & accenti',d:'Milanese vs Romano vs Napoletano — decode anything'},
+ {id:'c2u3',t:'Il rounds perfetto',d:'Lead a ward round entirely in Italian · consult like a native'},
+ {id:'c2u4',t:'Gioco di parole',d:'Wordplay · double meanings · making natives laugh'},
+ {id:'c2u5',t:'L\'esame finale',d:'Full simulated native-level oral exam', exam:true}
+]};
+
+/* ---------- PLACEMENT QUESTIONS (calibrated A1→C1) ---------- */
+const PLACEMENT = [
+ {lv:0,q:'Io ___ studentessa di medicina.',o:['sono','sei','è','siamo'],a:0},
+ {lv:0,q:'"Vorrei un caffè, per favore" means…',o:['I would like a coffee, please','I had a coffee, thanks','Where is the coffee?','Coffee is good'],a:0},
+ {lv:1,q:'Ieri ___ all\'ospedale alle 7.',o:['sono andata','andavo sempre','andrò','vado'],a:0},
+ {lv:1,q:'Da bambina ___ sempre al mare d\'estate.',o:['andavo','sono andata','andrò','vada'],a:0},
+ {lv:2,q:'Penso che lui ___ ragione.',o:['abbia','ha','avere','avrà'],a:0},
+ {lv:2,q:'"Glielo dico domani." — glielo = ?',o:['it, to him/her','them, to us','her, to me','it, to you all'],a:0},
+ {lv:3,q:'Se ___ studiato di più, avrei passato l\'esame.',o:['avessi','avrei','avevo','abbia'],a:0},
+ {lv:3,q:'Benché ___ stanco, il medico ha finito il turno.',o:['fosse','era','sarà','è stato'],a:0},
+ {lv:4,q:'Which sentence is the most natural, native register?',o:['Mi sa che non ce la faccio per stasera.','Io penso che io non posso venire questa sera.','Non è possibile per me venire in questa sera.','Penso di non potere a venire stasera.'],a:0},
+ {lv:4,q:'"In bocca al lupo!" — best reply?',o:['Crepi!','Grazie mille!','Anche a te!','Va bene!'],a:0},
+ {lv:2,q:'Il paziente lamenta dolore toracico ___ tre giorni.',o:['da','per','fa','fra'],a:0},
+ {lv:3,q:'È necessario che il paziente ___ a digiuno.',o:['rimanga','rimane','rimarrà','rimanere'],a:0}
+];
+
+/* ---------- STARTER SRS DECK (mnemonic-loaded) ---------- */
+function buildStarterDeck(){
+  const raw = [
+   ['magari','if only / maybe (wishful)','MAGA-RE: a king wishing on a star — pure wishful thinking.','Magari potessi dormire 8 ore!'],
+   ['addirittura','even / no less / really?!','ADD-IRRI-TUTTO: they ADDed irritation to EVERYTHING — "seriously?!"','Ha fatto tre esami in un giorno, addirittura!'],
+   ['mica','not at all / hardly (colloquial)','MICA = MICrophone Absent: "I\'m NOT saying that on the mic."','Non è mica facile, l\'università.'],
+   ['anzi','on the contrary / actually','ANZI sounds like "AHN-tsee" — sneeze that flips the sentence around.','Non mi disturbi, anzi, resta pure!'],
+   ['ricovero','hospital admission','RE-COVER-O: the hospital RE-COVERs you under its roof.','Il paziente necessita di ricovero urgente.'],
+   ['prelievo','blood draw','PRE-LEAVE-O: they take blood BEFORE you LEAVE.','Domattina facciamo un prelievo a digiuno.'],
+   ['vertigini','dizziness','VERTIGO + GENIE: a genie spinning you around.','La paziente riferisce vertigini da due giorni.'],
+   ['svenire','to faint','S-VENIRE: your soul "exits-comes" out of you.','È svenuta in corsia stamattina.'],
+   ['guarire','to heal / recover','GUAR-IRE: a GUARd protecting you until you heal.','Guarirà in due settimane.'],
+   ['fegato','liver','FEG-GATO: feed the cat (gatto) liver pâté.','Il fegato è ingrossato all\'ecografia.'],
+   ['rene','kidney','RENE the kidney bean. Kidneys ARE bean-shaped.','Il rene destro presenta una cisti.'],
+   ['polmone','lung','POLline + MONE: pollen money — pollen goes in your lungs.','Auscultazione: murmure vescicolare su entrambi i polmoni.'],
+   ['febbre','fever','FEB is flu season — FEBbre in FEBruary.','Febbre da tre giorni, 38.5°C.'],
+   ['sebbene','although (+congiuntivo!)','SE-BENE: "if-well"… BUT. Always drags the subjunctive behind it.','Sebbene sia stanca, studio.'],
+   ['affinché','so that (+congiuntivo!)','A-FIN-KEY: the KEY to your FINal goal — purpose clause.','Te lo spiego affinché tu capisca.'],
+   ['ormai','by now / at this point','OR-MY: "it\'s OR my time is up" — too late now.','Ormai è troppo tardi per cambiare idea.'],
+   ['rendersi conto','to realize','RENDER an aCCOUNT to yourself — the moment it computes.','Mi sono resa conto dell\'errore subito.'],
+   ['cavarsela','to get by / manage','CAVA(dig)+SELA: dig yourself out of trouble.','Me la cavo bene con l\'italiano medico.'],
+   ['intervento','surgery / operation','INTER-VENT: surgeons VENTure INTo you.','L\'intervento è previsto per giovedì.'],
+   ['dimettere','to discharge (from hospital)','DI-MET-TERE: DIsconnect from the MEdical TERritory.','La dimettiamo domani mattina.']
+  ];
+  return raw.map((c,i)=>({id:'c'+i, it:c[0], en:c[1], mn:c[2], ex:c[3], due:Date.now(), ivl:0, ease:2.5}));
+}
+
+/* ---------- CINEMA CATALOG ---------- */
+const FILMS = [
+ {t:'Luca',lv:'A1',g:['animation','feelgood'],c:'#1D3C8F',e:'🌊',w:'Disney+',why:'Slow, crystal-clear Italian, seaside vocabulary, kid-level grammar. The perfect first film.'},
+ {t:'Pinocchio (2019)',lv:'A2',g:['fantasy','classic'],c:'#1E7A52',e:'🤥',w:'Prime',why:'Garrone\'s version — simple dialogue, theatrical diction, classic vocab.'},
+ {t:'Benvenuti al Sud',lv:'A2',g:['comedy'],c:'#F2B705',e:'📮',w:'Netflix/Prime',why:'North-vs-South comedy. Teaches you that "Italian" has flavors — and milanese stereotypes you\'ll hear daily.'},
+ {t:'Perfetti Sconosciuti',lv:'B1',g:['drama','comedy'],c:'#E0312E',e:'📱',w:'Netflix',why:'One dinner table, pure conversational Italian. The single best film for everyday speech patterns.'},
+ {t:'DOC – Nelle tue mani',lv:'B1',g:['medical','drama'],c:'#1E7A52',e:'🩺',w:'RaiPlay (free!)',why:'Italian House MD. THE show for you — real corsia language: ricovero, anamnesi, consulto. Watch with a notebook.'},
+ {t:'Un Medico in Famiglia',lv:'A2',g:['medical','feelgood'],c:'#1E7A52',e:'👨‍⚕️',w:'RaiPlay (free!)',why:'Gentle family sitcom around a doctor — domestic + light medical vocab, very forgiving pace.'},
+ {t:'La Vita è Bella',lv:'B1',g:['classic','drama'],c:'#1D3C8F',e:'🎪',w:'Prime',why:'Benigni speaks fast but the emotional context carries you. Cultural mandatory.'},
+ {t:'Mare Fuori',lv:'B2',g:['drama','crime'],c:'#E0312E',e:'⛓',w:'RaiPlay/Netflix',why:'Naples youth prison drama, the show every Italian under 30 quotes. Neapolitan-tinted — trains your ear for real speed.'},
+ {t:'Gomorra',lv:'C1',g:['crime','drama'],c:'#17171C',e:'🔫',w:'Sky/Now',why:'Heavy Neapolitan. If you can follow this raw, you\'re past C1 listening. Use IT subs.'},
+ {t:'Il Divo / La Grande Bellezza',lv:'C1',g:['classic','drama'],c:'#1D3C8F',e:'🏛',w:'Prime/Mubi',why:'Sorrentino — dense, literary, ironic. C1-C2 register, political & cultural references natives expect you to catch.'},
+ {t:'Boris',lv:'C2',g:['comedy'],c:'#F2B705',e:'🎬',w:'Disney+',why:'THE cult comedy. Sarcasm, industry slang, wordplay at native speed. When Boris is funny to you, you\'ve made it.'},
+ {t:'Skam Italia',lv:'B1',g:['drama','feelgood'],c:'#E0312E',e:'🎒',w:'Netflix',why:'How Italians your age ACTUALLY text and talk. Gen-Z slang goldmine: "boh", "dai", "che palle".'},
+ {t:'Il Commissario Montalbano',lv:'B2',g:['crime','classic'],c:'#1D3C8F',e:'🕵️',w:'RaiPlay (free!)',why:'Sicilian inspector, beloved nationwide. Clear narration + Sicilian color. Great long-haul series.'},
+ {t:'Chiamami col tuo nome',lv:'B2',g:['drama','feelgood'],c:'#F2B705',e:'🍑',w:'Prime',why:'Mixed IT/EN — beautiful intermediate stepping stone, Lombardy summer vocabulary.'},
+ {t:'SanPa',lv:'C1',g:['documentary'],c:'#17171C',e:'📼',w:'Netflix',why:'Documentary Italian: interviews, archival speech, medical/addiction terminology. Excellent for your field.'},
+ {t:'Studio Battaglia',lv:'B2',g:['drama'],c:'#E0312E',e:'⚖️',w:'RaiPlay',why:'Milan law firm drama — professional register, the exact formal-but-modern Italian you need at IEO/INT.'}
+];
+const GENRES = ['medical','comedy','drama','crime','feelgood','classic','animation','documentary','fantasy'];
+
+/* ---------- MEDICAL MODULE DATA ---------- */
+const ANAMNESI = [
+ ['Buongiorno, sono una studentessa di medicina. Posso farle qualche domanda?','Opening — always introduce role first'],
+ ['Che cosa l\'ha portata qui oggi?','Chief complaint (motivo del ricovero)'],
+ ['Da quanto tempo ha questo disturbo?','Duration — expect "da tre giorni / da una settimana"'],
+ ['Può descrivermi il dolore? È fisso o va e viene?','Pain character — fisso, trafittivo, gravativo, urente'],
+ ['Il dolore si irradia da qualche parte?','Radiation — s\'irradia al braccio sinistro…'],
+ ['Ha avuto febbre, nausea o vomito?','Associated symptoms screen'],
+ ['Soffre di altre malattie? Diabete, ipertensione?','Past medical history (anamnesi patologica remota)'],
+ ['Prende farmaci regolarmente? Ha allergie?','Drugs & allergies — NEVER skip'],
+ ['In famiglia ci sono malattie importanti?','Family history (anamnesi familiare)'],
+ ['Fuma? Beve alcolici? Che lavoro fa?','Social history (anamnesi fisiologica)'],
+ ['La visito un attimo, si stenda pure sul lettino.','Transition to physical exam'],
+ ['Faremo degli esami del sangue e una radiografia.','Plan — communicating next steps']
+];
+const MED_DECKS = {
+ 'Sintomi & Segni':[['la dispnea','shortness of breath','DIS-PNEA: DISrupted PNEUmatic tire — air won\'t flow'],['la cefalea','headache','CHEF-ALEA: the chef\'s dice (alea) rattling in your skull'],['l\'astenia','fatigue/weakness','A-STHENIA: A(without)-STRENGTH, same root as myasthenia'],['il prurito','itching','PRU-RITO: a RITual of scratching'],['la tosse','cough','TOSS: you TOSS air out violently'],['il capogiro','dizziness/lightheaded','CAPO(head)+GIRO(spin): head-spin, literally'],['l\'inappetenza','loss of appetite','IN-APPETITE-ENZA — transparent, just say it Italian-style'],['il versamento','effusion','VERSARE = to pour: fluid POURED where it shouldn\'t be']],
+ 'In Corsia (ward)':[['il ricovero','admission','RE-COVER under the hospital roof'],['la dimissione','discharge','DI-MISSION: mission over, go home'],['la cartella clinica','medical chart','CARTELLA = folder; the clinical folder'],['il consulto','specialist consult','CONSULT — free cognate, just stress con-SUL-to'],['il turno di guardia','on-call shift','GUARD duty — you GUARD the ward'],['la flebo','IV drip','FLEBO from phlebo- (vein) — vein-feeder'],['il sondino','feeding tube/NG tube','SOND-INO: a little SONDE (probe)'],['le piaghe da decubito','pressure sores','DECUBITO = lying down; wounds from lying']],
+ 'Esami & Procedure':[['il prelievo','blood draw','they take it before you PRE-LEAVE'],['l\'ecografia','ultrasound','ECO = echo — echo-graphy'],['la TAC','CT scan','TAC = Tomografia Assiale Computerizzata — say "la TAC"'],['la risonanza','MRI','RISONANZA magnetica — resonance, cognate'],['il tampone','swab','TAMPON-E: the COVID word everyone knows'],['l\'emocromo','CBC/full blood count','EMO(blood)+CROMO(color): counting blood colors'],['la biopsia','biopsy','cognate — stress: bi-op-SI-a'],['a digiuno','fasting/NPO','DI-GIUNO: June dieting — nothing by mouth']]
+};
+
+/* =========================================================
+   RENDERING
+========================================================= */
+let TAB='oggi';
+function renderHeader(){
+  $('#hdrStats').innerHTML = `
+    <span class="pill fire">🔥 ${S.streak}</span>
+    <span class="pill">⚡ ${S.xp} XP</span>
+    <span class="pill lvl">${S.level}</span>`;
+}
+function setTab(t){
+  TAB=t;
+  document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.tab===t));
+  ({oggi:renderOggi,linea:renderLinea,parla:renderParla,med:renderMed,cinema:renderCinema,srs:renderSRS})[t]();
+  main.scrollTop=0; window.scrollTo(0,0);
+}
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>setTab(b.dataset.tab));
+
+/* =========================================================
+   ONBOARDING + PLACEMENT
+========================================================= */
+function renderOnboarding(){
+  $('#nav').style.display='none';
+  main.innerHTML = `
+  <div class="onb-hero fadein">
+    <div class="eyebrow r">LINEA F · DIREZIONE: MADRELINGUA</div>
+    <div class="big">Fluent isn't a talent.<br>It's a <em>route</em>.</div>
+    <p class="muted" style="margin-top:12px">Built for a brain that hates paragraphs and loves momentum. 5-minute stations. Speaking from minute one. Medical Italian woven in from A2. No mascot guilt-tripping you.</p>
+  </div>
+  <div class="card">
+    <div class="eyebrow b">STEP 1 · WHO'S RIDING</div>
+    <h2>What should I call you?</h2>
+    <input class="ti" id="obName" placeholder="Your name (optional)" maxlength="20">
+  </div>
+  <div class="card">
+    <div class="eyebrow b">STEP 2 · YOUR FUEL</div>
+    <h2>Pick what you actually enjoy</h2>
+    <p class="muted">This drives your film prescriptions & conversation topics.</p>
+    <div class="chiprow" id="obChips">
+      ${['medical 🩺','comedy 😂','drama 🎭','crime 🕵️','feelgood ☀️','classic 🎬','documentary 📼','animation 🐟','fantasy ✨'].map(g=>`<button class="chip" data-g="${g.split(' ')[0]}">${g}</button>`).join('')}
+    </div>
+  </div>
+  <button class="btn primary block" id="obGo">Take the placement test →</button>
+  <p class="muted" style="text-align:center;margin-top:10px">12 questions + 1 short writing sample. AI-graded to a CEFR level. ~4 min.</p>`;
+  document.querySelectorAll('#obChips .chip').forEach(c=>c.onclick=()=>c.classList.toggle('on'));
+  $('#obGo').onclick=()=>{
+    S.name = $('#obName').value.trim();
+    S.interests=[...document.querySelectorAll('#obChips .chip.on')].map(c=>c.dataset.g);
+    if(!S.interests.length) S.interests=['medical','drama'];
+    save(); runPlacement();
+  };
+}
+
+function runPlacement(){
+  let i=0, score=[0,0,0,0,0]; // per band
+  const seen=[0,0,0,0,0];
+  function q(){
+    if(i>=PLACEMENT.length){ return writingStep(); }
+    const Q=PLACEMENT[i];
+    seen[Q.lv]++;
+    main.innerHTML = `
+    <div class="fadein">
+      <div class="eyebrow r">PLACEMENT · ${i+1} / ${PLACEMENT.length}</div>
+      <div class="progressbar" style="margin-bottom:16px"><div style="width:${(i/PLACEMENT.length)*100}%"></div></div>
+      <div class="card"><h2>${esc(Q.q)}</h2></div>
+      ${Q.o.map((o,k)=>`<button class="qopt" data-k="${k}">${esc(o)}</button>`).join('')}
+      <button class="btn sm block" id="skipQ" style="margin-top:8px;background:var(--carta2)">Boh, no idea — skip</button>
+    </div>`;
+    document.querySelectorAll('.qopt').forEach(b=>b.onclick=()=>{
+      if(+b.dataset.k===Q.a) score[Q.lv]++;
+      i++; q();
+    });
+    $('#skipQ').onclick=()=>{i++;q();};
+  }
+  function writingStep(){
+    main.innerHTML = `
+    <div class="fadein">
+      <div class="eyebrow r">PLACEMENT · WRITING SAMPLE</div>
+      <div class="card">
+        <h2>Write 3–6 sentences in Italian</h2>
+        <p class="muted">About anything — your day, your studies, why you're learning. Don't translate in your head, just write. If you truly can't yet, leave it blank.</p>
+      </div>
+      <textarea class="bigta" id="wSample" placeholder="Ciao! Mi chiamo…"></textarea>
+      <button class="btn primary block" id="wGo" style="margin-top:12px">Grade me →</button>
+    </div>`;
+    $('#wGo').onclick=async()=>{
+      $('#wGo').innerHTML='<span class="spinner"></span> Grading…'; $('#wGo').disabled=true;
+      const sample = $('#wSample').value.trim();
+      // MCQ-derived level
+      let mcqIdx=0;
+      const bands=[0,1,2,3,4];
+      for(const b of bands){ if(seen[b]&&score[b]/seen[b]>=0.5) mcqIdx=b+1; else break; }
+      let finalIdx=Math.min(mcqIdx,5), note='';
+      if(sample.length>15){
+        const res = await ai([{role:'user',content:`CEFR-grade this Italian writing sample from a learner. Sample: """${sample}"""\nRespond ONLY with JSON: {"cefr":"A1|A2|B1|B2|C1|C2","strengths":"one short sentence","fix":"the single most important thing to fix, one short sentence"}`}],'You are a strict but kind CEFR examiner for Italian. JSON only, no markdown.',true);
+        if(res&&res.cefr){
+          const wIdx=LEVELS.indexOf(res.cefr);
+          if(wIdx>-1) finalIdx=Math.round((finalIdx+wIdx)/2);
+          note=`<div class="feedback-box"><b>Examiner notes</b>\n✅ ${esc(res.strengths||'')}\n🔧 ${esc(res.fix||'')}</div>`;
+        }
+      }
+      finalIdx=Math.max(0,Math.min(5,finalIdx));
+      S.levelIdx=finalIdx; S.level=LEVELS[finalIdx]; S.placed=true; touchStreak(); save();
+      main.innerHTML = `
+      <div class="fadein" style="text-align:center;padding-top:30px">
+        <div class="eyebrow r">DIAGNOSIS COMPLETE</div>
+        <div style="font-family:var(--font-d);font-size:5rem;color:var(--rosso);line-height:1">${S.level}</div>
+        <h2 style="margin:8px 0 4px">${LEVEL_NAMES[S.level]}</h2>
+        <p class="muted">Your boarding station. Everything below it stays unlocked for review; everything above unlocks as you pass checkpoints.</p>
+        ${note}
+        <button class="btn primary block" id="enterApp" style="margin-top:18px">Board the line →</button>
+      </div>`;
+      $('#enterApp').onclick=()=>{ $('#nav').style.display='flex'; renderHeader(); setTab('oggi'); };
+    };
+  }
+  q();
+}
+
+/* =========================================================
+   OGGI — daily dashboard, 3 missions max (ADHD: tiny wins)
+========================================================= */
+function getMissions(){
+  const t=today();
+  if(S.missionDay!==t){ S.missionDay=t; S.missions={lesson:false,parla:false,srs:false,scrivi:false}; save(); }
+  return S.missions;
+}
+function dueCount(){ return S.deck.filter(c=>c.due<=Date.now()).length; }
+
+function renderOggi(){
+  const m=getMissions();
+  const doneN=Object.values(m).filter(Boolean).length;
+  const hello = S.name?`Ciao, ${esc(S.name)}`:'Ciao';
+  main.innerHTML = `
+  <div class="fadein">
+    <div class="eyebrow r">OGGI · ${new Date().toLocaleDateString('it-IT',{weekday:'long', day:'numeric', month:'long'})}</div>
+    <h1 style="margin-bottom:14px">${hello}.<br>${doneN===4?'Giornata perfetta. 🏆':'Quattro fermate oggi.'}</h1>
+    <div class="statgrid">
+      <div class="stat"><div class="n">🔥${S.streak}</div><div class="l">streak</div></div>
+      <div class="stat"><div class="n">${dueCount()}</div><div class="l">cards due</div></div>
+      <div class="stat"><div class="n">${S.level}</div><div class="l">your level</div></div>
+    </div>
+    <div class="eyebrow b">LE MISSIONI DI OGGI — each ≤ 5 min</div>
+    <button class="mission ${m.lesson?'done':''}" id="m1"><span class="chk">${m.lesson?'✓':''}</span><span><b>One station on the Linea</b><br><span class="muted">A micro-lesson at your level</span></span><span style="margin-left:auto" class="tag a">+30</span></button>
+    <button class="mission ${m.parla?'done':''}" id="m2"><span class="chk">${m.parla?'✓':''}</span><span><b>Speak 5 turns in the booth</b><br><span class="muted">Out loud. Yes, actually out loud.</span></span><span style="margin-left:auto" class="tag rr">+40</span></button>
+    <button class="mission ${m.srs?'done':''}" id="m3"><span class="chk">${m.srs?'✓':''}</span><span><b>Clear your due cards</b><br><span class="muted">${dueCount()} waiting in Ripasso</span></span><span style="margin-left:auto" class="tag bb">+20</span></button>
+    <button class="mission ${m.scrivi?'done':''}" id="m4"><span class="chk">${m.scrivi?'✓':''}</span><span><b>Scrivi — 3 sentences, AI-corrected</b><br><span class="muted">Today's prompt below</span></span><span style="margin-left:auto" class="tag gg">+25</span></button>
+    <div id="scriviBox"></div>
+    <div class="eyebrow b" style="margin-top:16px">BONUS ROUNDS · got 3 more minutes?</div>
+    <div class="row" style="margin-bottom:14px">
+      <button class="btn sm yellow" id="bDett" style="flex:1">👂 Dettato<br><span style="font-size:.64rem;font-weight:400">type what you hear</span></button>
+      <button class="btn sm dark" id="bSpr" style="flex:1">⏱ Verb Sprint<br><span style="font-size:.64rem;font-weight:400">60s conjugation rush</span></button>
+    </div>
+    <div class="eyebrow b">LA SETTIMANA</div>
+    <div class="card" style="padding:12px">${weekStrip()}</div>
+    <div class="card" style="margin-top:14px;background:var(--carta2)">
+      <div class="eyebrow">WHY THIS WORKS</div>
+      <p style="font-size:.86rem"><b>4 tiny missions > 1 heroic session.</b> Each hits a different skill (input, output, retention, production). Done daily, this is the comprehensible-input + forced-output loop that actually produces fluency — the same loop you'd never sustain with a 90-minute textbook block.</p>
+    </div>
+  </div>`;
+  $('#m1').onclick=()=>setTab('linea');
+  $('#m2').onclick=()=>setTab('parla');
+  $('#m3').onclick=()=>setTab('srs');
+  $('#m4').onclick=()=>renderScrivi();
+  $('#bDett').onclick=renderDettato;
+  $('#bSpr').onclick=renderSprint;
+}
+
+const PROMPTS = ['Descrivi la tua giornata in ospedale (vera o immaginaria).','Qual è il tuo cibo italiano preferito e perché?','Racconta un paziente (inventato!) che ti ha colpito.','Cosa farai questo weekend?','Descrivi Milano a un turista in tre frasi.','Perché hai scelto medicina?','Racconta l\'ultima cosa che ti ha fatto ridere.'];
+
+/* ----- Weekly XP strip ----- */
+function weekStrip(){
+  const days=[]; const labels=['L','M','M','G','V','S','D'];
+  for(let i=6;i>=0;i--){ const d=new Date(); d.setDate(d.getDate()-i);
+    days.push({k:d.toISOString().slice(0,10), wd:(d.getDay()+6)%7, today:i===0}); }
+  const max=Math.max(40,...days.map(d=>S.xpLog[d.k]||0));
+  return `<div style="display:flex;align-items:flex-end;gap:8px;height:74px">${days.map(d=>{
+    const v=S.xpLog[d.k]||0, h=Math.round(v/max*52);
+    return `<div style="flex:1;text-align:center"><div style="font-family:var(--font-m);font-size:.6rem;font-weight:700;color:var(--ink2)">${v||''}</div><div style="height:${Math.max(h,3)}px;background:${d.today?'var(--rosso)':v?'var(--blu)':'var(--carta2)'};border-radius:4px 4px 0 0;border:1.5px solid var(--ink);border-bottom:none"></div><div style="font-family:var(--font-m);font-size:.62rem;font-weight:700;${d.today?'color:var(--rosso)':''}">${labels[d.wd]}</div></div>`;
+  }).join('')}</div>`;
+}
+
+/* =========================================================
+   DETTATO — listening dictation (ear training, word by word)
+========================================================= */
+const DETTATO_BANK = {
+ A1:['Vorrei un caffè e un cornetto, per favore.','Mi chiamo Anna e studio medicina a Milano.','Dov\'è la stazione, per favore?','Il museo è aperto dalle nove alle sette.','Ho due fratelli e una sorella.'],
+ A2:['Ieri sono andata in ospedale alle sette di mattina.','Da bambino giocavo sempre in giardino con mio cugino.','Mi fa male la testa da due giorni.','Domani dovrò studiare tutto il pomeriggio.','Abbiamo comprato il pane, il latte e un po\' di frutta.'],
+ B1:['Penso che il paziente abbia bisogno di riposo assoluto.','Se potessi, ti aiuterei volentieri con il trasloco.','Me ne sono accorta solo quando era troppo tardi.','Il medico ci ha spiegato i risultati delle analisi.','Vorrei sapere se il treno parte in orario.'],
+ B2:['Se avessi saputo del cambio turno, sarei arrivata prima.','Benché fosse esausto, il chirurgo completò l\'intervento.','La terapia è stata modificata in seguito agli esami del sangue.','Bisogna che tu faccia il prelievo a digiuno domattina.','Nonostante la pioggia, la manifestazione si è svolta regolarmente.'],
+ C1:['Sebbene la diagnosi fosse incerta, il primario decise di procedere comunque.','Qualora si presentassero effetti collaterali, sospenda subito il farmaco.','Non è da escludere che il quadro clinico peggiori nelle prossime ore.','Si dice che la nuova riforma sanitaria entrerà in vigore a settembre.','A quanto pare, se ne erano già andati prima del nostro arrivo.'],
+ C2:['Ormai si era fatto tardi e, manco a dirlo, l\'ascensore era di nuovo guasto.','Avesse anche ragione, non è certo quello il modo di porsi con i colleghi.','Il paziente, ricoverato d\'urgenza la notte scorsa, versa in condizioni stabili ma critiche.','Mica male per essere il tuo primo congresso, eh?','Per quanto se ne dica, la sanità pubblica resta un fiore all\'occhiello del paese.']
+};
+function renderDettato(){
+  let round=0, score=0;
+  const bank=[...(DETTATO_BANK[S.level]||DETTATO_BANK.B1)].sort(()=>Math.random()-0.5);
+  function play(){
+    if(round>=3) return done();
+    const target=bank[round%bank.length];
+    main.innerHTML=`
+    <div class="fadein">
+      <button class="btn sm" id="dBack" style="margin-bottom:10px">← Oggi</button>
+      <div class="eyebrow r">DETTATO · ${round+1} / 3 · ${S.level}</div>
+      <h1 style="margin-bottom:10px">Type what you hear.</h1>
+      <div class="card" style="text-align:center">
+        <button class="btn primary" id="dPlay">🔊 Play</button>
+        <button class="btn yellow" id="dSlow">🐢 Slow</button>
+        <p class="muted" style="margin-top:8px">Listen as many times as you need. Accents matter, but I'll be kind.</p>
+      </div>
+      <textarea class="bigta" id="dTa" placeholder="Scrivi quello che senti…" autocapitalize="off"></textarea>
+      <button class="btn dark block" id="dCheck" style="margin-top:10px">Check →</button>
+      <div id="dFb"></div>
+    </div>`;
+    $('#dBack').onclick=()=>setTab('oggi');
+    $('#dPlay').onclick=()=>speak(target,0.88);
+    $('#dSlow').onclick=()=>speak(target,0.6);
+    speak(target,0.88);
+    $('#dCheck').onclick=()=>{
+      const norm=s=>s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z' ]/g,'').split(/\s+/).filter(Boolean);
+      const T=norm(target), U=norm($('#dTa').value);
+      const diff=target.split(/\s+/).map((w,i)=>{
+        const cw=norm(w)[0]||''; const hit=U[i]===cw;
+        return `<span style="background:${hit?'#cdeedd':'#ffd2d0'};padding:1px 4px;border-radius:4px">${esc(w)}</span>`;
+      }).join(' ');
+      const hits=T.filter((w,i)=>U[i]===w).length, pct=Math.round(hits/T.length*100);
+      if(pct>=70) score++;
+      $('#dFb').innerHTML=`<div class="feedback-box"><b>${pct}% — ${pct>=90?'orecchio d\'oro 🏆':pct>=70?'molto bene ✓':'riascolta e riprova domani'}</b><br><br>${diff}</div>
+      <button class="btn green block" id="dNext" style="margin-top:10px">${round<2?'Next sentence →':'Finish →'}</button>`;
+      $('#dCheck').style.display='none';
+      $('#dNext').onclick=()=>{round++;play();};
+    };
+  }
+  function done(){
+    gainXP(15); touchStreak(); save();
+    main.innerHTML=`<div class="fadein" style="text-align:center;padding-top:50px"><div style="font-size:3rem">👂</div><h1>${score}/3 sentences nailed</h1><p class="muted">+15 XP. Dictation is the fastest way to close the gap between "I know that word" and "I caught that word at native speed".</p><button class="btn primary" style="margin-top:14px" id="dDone">Back to Oggi →</button></div>`;
+    $('#dDone').onclick=()=>setTab('oggi');
+  }
+  play();
+}
+
+/* =========================================================
+   VERB SPRINT — 60 seconds of conjugation under pressure
+========================================================= */
+const SPRINT_BANK = [
+ // [prompt-pronoun, infinitive, tense, answer, minLevelIdx]
+ ['io','essere','presente','sono',0],['tu','avere','presente','hai',0],['noi','andare','presente','andiamo',0],
+ ['lei','fare','presente','fa',0],['loro','volere','presente','vogliono',0],['io','potere','presente','posso',0],
+ ['io','mangiare','passato prossimo','ho mangiato',1],['lei','andare','passato prossimo','è andata',1],
+ ['noi','vedere','passato prossimo','abbiamo visto',1],['io','svegliarsi','passato prossimo','mi sono svegliata',1],
+ ['tu','dire','passato prossimo','hai detto',1],['loro','venire','passato prossimo','sono venuti',1],
+ ['io','andare','imperfetto','andavo',1],['noi','essere','imperfetto','eravamo',1],['lei','fare','imperfetto','faceva',1],
+ ['io','studiare','futuro','studierò',1],['noi','andare','futuro','andremo',1],['tu','essere','futuro','sarai',1],
+ ['io','volere','condizionale','vorrei',2],['noi','potere','condizionale','potremmo',2],['lei','fare','condizionale','farebbe',2],
+ ['lui','avere','congiuntivo presente','abbia',2],['tu','essere','congiuntivo presente','sia',2],['loro','andare','congiuntivo presente','vadano',2],
+ ['io','sapere','congiuntivo imperfetto','sapessi',3],['lei','essere','congiuntivo imperfetto','fosse',3],['noi','avere','congiuntivo imperfetto','avessimo',3],
+ ['io','fare','congiuntivo passato','abbia fatto',3],['lui','andare','trapassato prossimo','era andato',3],['io','dire','passato remoto','dissi',4],['lei','essere','passato remoto','fu',4]
+];
+function renderSprint(){
+  const pool=SPRINT_BANK.filter(v=>v[4]<=S.levelIdx).sort(()=>Math.random()-0.5);
+  if(pool.length<5) pool.push(...SPRINT_BANK.slice(0,8));
+  let i=0, hits=0, t=60, timer=null;
+  function ui(){
+    const v=pool[i%pool.length];
+    main.innerHTML=`
+    <div class="fadein">
+      <button class="btn sm" id="sBack" style="margin-bottom:10px">← Oggi</button>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div class="eyebrow r">VERB SPRINT</div>
+        <span class="pill" id="sClock" style="background:var(--rosso);color:#fff">⏱ ${t}s</span>
+      </div>
+      <div class="card" style="text-align:center;margin-top:8px">
+        <div class="eyebrow">${esc(v[2]).toUpperCase()}</div>
+        <div style="font-family:var(--font-d);font-size:1.9rem">${esc(v[0])} · ${esc(v[1])}</div>
+      </div>
+      <input class="ti" id="sIn" placeholder="conjugate…" autocomplete="off" autocapitalize="off" style="text-align:center;font-size:1.2rem">
+      <button class="btn dark block" id="sGo" style="margin-top:10px">Check (↵)</button>
+      <div style="text-align:center;margin-top:10px"><span class="pill fire">⚡ ${hits} correct</span></div>
+      <div id="sFb" style="text-align:center;margin-top:8px;font-weight:700"></div>
+    </div>`;
+    $('#sBack').onclick=()=>{clearInterval(timer);setTab('oggi');};
+    const inp=$('#sIn'); inp.focus();
+    function check(){
+      const norm=s=>s.toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+      if(norm(inp.value)===norm(v[3])){ hits++; $('#sFb').innerHTML='<span style="color:var(--verde)">✓ '+esc(v[3])+'</span>'; }
+      else{ $('#sFb').innerHTML='<span style="color:var(--rosso)">✗ → '+esc(v[3])+'</span>'; }
+      i++; setTimeout(()=>{ if(t>0) ui(); },550);
+    }
+    $('#sGo').onclick=check;
+    inp.addEventListener('keydown',e=>{if(e.key==='Enter')check();});
+    if(!timer){ timer=setInterval(()=>{ t--; const c=$('#sClock'); if(c)c.textContent='⏱ '+t+'s';
+      if(t<=0){ clearInterval(timer); end(); } },1000); }
+  }
+  function end(){
+    const xp=Math.min(hits*3,30); if(xp)gainXP(xp); touchStreak(); save();
+    main.innerHTML=`<div class="fadein" style="text-align:center;padding-top:50px"><div style="font-size:3rem">⏱</div><h1>${hits} in 60 seconds</h1><p class="muted">+${xp} XP. Conjugation under time pressure is what makes verbs come out of your mouth pre-built instead of assembled live.</p><button class="btn primary" style="margin-top:14px" id="sDone">Back to Oggi →</button></div>`;
+    $('#sDone').onclick=()=>setTab('oggi');
+  }
+  ui();
+}
+function renderScrivi(){
+  const p = PROMPTS[new Date().getDate()%PROMPTS.length];
+  $('#scriviBox').innerHTML = `
+  <div class="card fadein" style="border-left:8px solid var(--verde)">
+    <div class="eyebrow g">SCRIVI · PROMPT DI OGGI</div>
+    <h3>${esc(p)}</h3>
+    <textarea class="bigta" id="scriviTa" placeholder="Scrivi qui… (3+ frasi)"></textarea>
+    <button class="btn green block sm" id="scriviGo" style="margin-top:10px">Correct me →</button>
+    <div id="scriviFb"></div>
+  </div>`;
+  $('#scriviBox').scrollIntoView({behavior:'smooth'});
+  $('#scriviGo').onclick=async()=>{
+    const txt=$('#scriviTa').value.trim();
+    if(txt.length<10){toast('Write a bit more first ✍️');return;}
+    $('#scriviGo').innerHTML='<span class="spinner"></span>'; $('#scriviGo').disabled=true;
+    const fb = await ai([{role:'user',content:`Student level: ${S.level}. Prompt: "${p}". Their Italian text: """${txt}"""\nGive feedback in this exact compact format (plain text, no markdown headers):\n✅ CORRECTED VERSION: (their text, fixed, natural)\n🔧 TOP 2 FIXES: (bullet each: error → fix → 5-word why)\n⭐ ONE UPGRADE: (a more native way to say one of their phrases)\nKeep it under 120 words total.`}],'You are an encouraging Italian teacher. Be concise, specific, never condescending.');
+    $('#scriviFb').innerHTML=`<div class="feedback-box">${esc(fb)}</div>`;
+    S.missions.scrivi=true; touchStreak(); gainXP(25); save();
+    $('#scriviGo').textContent='✓ Done — +25 XP'; 
+  };
+}
+
+/* =========================================================
+   LA LINEA — metro map curriculum
+========================================================= */
+function renderLinea(){
+  let html=`<div class="fadein"><div class="eyebrow r">LA LINEA F · ${S.level} → C2</div>
+  <h1 style="margin-bottom:4px">Your route to native.</h1>
+  <p class="muted" style="margin-bottom:10px">Every station = one 5-minute lesson, AI-built fresh each time. Checkpoints are mini oral exams — pass to unlock the next zone.</p>`;
+  LEVELS.forEach((lv,li)=>{
+    const units=CURRICULUM[lv];
+    const locked = li>S.levelIdx;
+    const doneAll = units.every(u=>S.unitsDone[u.id]);
+    html+=`<div class="lv-block">
+      <div class="lv-head"><span class="lv-badge ${li===S.levelIdx?'cur':''}">${lv}</span><span class="lv-name">${LEVEL_NAMES[lv]} ${doneAll?'· COMPLETE ✓':''} ${locked?'· LOCKED 🔒':''}</span></div>
+      <div class="stations ${locked?'locked':''}">`;
+    units.forEach((u,ui)=>{
+      const done=S.unitsDone[u.id];
+      const prevDone = ui===0 || S.unitsDone[units[ui-1].id];
+      const here = li===S.levelIdx && !done && prevDone;
+      const lock = locked || (!done && !prevDone);
+      html+=`<button class="station ${done?'done':''} ${here?'here':''} ${lock?'lock':''}" data-id="${u.id}" data-lv="${lv}" ${lock?'disabled':''}>
+        <span class="st-txt"><b>${esc(u.t)}</b><span>${esc(u.d)}</span></span>
+        <span class="st-go">${done?'REVIEW':(u.exam?'EXAM':'GO →')}</span>
+      </button>`;
+    });
+    html+=`</div></div>`;
+  });
+  html+='</div>';
+  main.innerHTML=html;
+  document.querySelectorAll('.station:not(.lock)').forEach(b=>b.onclick=()=>{
+    const lv=b.dataset.lv, u=CURRICULUM[lv].find(x=>x.id===b.dataset.id);
+    u.exam ? openCheckpoint(u,lv) : openLesson(u,lv);
+  });
+}
+
+/* ----- Micro-lesson: concept → mnemonic → 5 drills → speak ----- */
+async function openLesson(unit, lv){
+  showSheet(`<div class="eyebrow r">${lv} · ${esc(unit.t)}</div>`,`<div style="text-align:center;padding:40px 0"><span class="spinner"></span><p class="muted" style="margin-top:10px">Building your lesson…</p></div>`);
+  const lesson = await ai([{role:'user',content:`Create a 5-minute Italian micro-lesson. Level: ${lv}. Topic: "${unit.t}" (${unit.d}). Learner: a medical student with ADHD who loves mnemonics.
+Respond ONLY with JSON:
+{"concept":{"title":"...","bullets":["3-4 punchy bullets explaining the core rule/idea","..."],"examples":[{"it":"Italian example","en":"translation"},{"it":"...","en":"..."}]},
+"mnemonic":"one vivid memory hook for the trickiest part of this topic",
+"drills":[{"q":"question (can include ___ gaps)","options":["4 options"],"answer":0,"why":"8-word explanation"} x5 — calibrate difficulty to ${lv}],
+"speak":{"prompt":"a single sentence the learner must say aloud in Italian, using today's grammar","model":"the model Italian sentence"},
+"newcards":[{"it":"word/phrase from this lesson","en":"meaning","mn":"mnemonic","ex":"example sentence"} x2]}`}],'You are a brilliant Italian curriculum designer. JSON only, no markdown fences. Drills must genuinely test the concept.',true);
+  if(!lesson){ sheetBody(`<div class="card">⚠ Couldn't build the lesson — check connection and tap the station again.</div>`); return; }
+  let di=0, correct=0;
+  function drillView(){
+    if(di>=lesson.drills.length) return speakView();
+    const D=lesson.drills[di];
+    sheetBody(`
+      <div class="eyebrow b">DRILL ${di+1} / ${lesson.drills.length}</div>
+      <div class="card"><h2>${esc(D.q)}</h2></div>
+      ${D.options.map((o,k)=>`<button class="qopt" data-k="${k}">${esc(o)}</button>`).join('')}
+      <div id="drillFb"></div>`);
+    document.querySelectorAll('.sheet .qopt').forEach(b=>b.onclick=()=>{
+      const k=+b.dataset.k;
+      document.querySelectorAll('.sheet .qopt').forEach(x=>x.disabled=true);
+      if(k===D.answer){ b.classList.add('right'); correct++; }
+      else{ b.classList.add('wrong'); document.querySelectorAll('.sheet .qopt')[D.answer].classList.add('right'); }
+      $('#drillFb').innerHTML=`<div class="mnemo fadein" style="margin-top:10px"><b>${k===D.answer?'✓ Esatto!':'✗'} </b>${esc(D.why)}</div><button class="btn dark block" id="nextD">Next →</button>`;
+      $('#nextD').onclick=()=>{di++;drillView();};
+    });
+  }
+  function speakView(){
+    sheetBody(`
+      <div class="eyebrow r">FINAL STATION TASK · SPEAK IT</div>
+      <div class="card"><h2>${esc(lesson.speak.prompt)}</h2>
+        <p class="muted">Model answer (tap to hear):</p>
+        <button class="btn sm yellow" id="hearModel">🔊 ${esc(lesson.speak.model)}</button>
+      </div>
+      <button class="btn primary block" id="speakNow">🎙 Say it out loud</button>
+      <div id="speakFb" style="margin-top:10px"></div>
+      <button class="btn sm block" id="skipSpeak" style="margin-top:8px;background:var(--carta2)">No mic here — I said it, I swear</button>`);
+    $('#hearModel').onclick=()=>speak(lesson.speak.model);
+    $('#speakNow').onclick=()=>{
+      $('#speakNow').textContent='🔴 Listening… speak now';
+      listen(async heard=>{
+        $('#speakFb').innerHTML=`<div class="feedback-box">You said: <b>${esc(heard)}</b>\nTarget: ${esc(lesson.speak.model)}\n${similar(heard,lesson.speak.model)?'🎯 Nailed it!':'Close — listen to the model again and once more!'}</div>`;
+        finish();
+      },null,()=>{ $('#speakFb').innerHTML='<div class="feedback-box">Mic unavailable — say it aloud anyway, then finish below.</div>'; finish(); });
+    };
+    $('#skipSpeak').onclick=finish;
+    function finish(){
+      if($('#finishL'))return;
+      const btn=document.createElement('button'); btn.id='finishL'; btn.className='btn green block'; btn.style.marginTop='10px';
+      btn.textContent=`Finish station · +30 XP (${correct}/${lesson.drills.length} drills)`;
+      $('#speakFb').after(btn);
+      btn.onclick=()=>{
+        S.unitsDone[unit.id]=true; S.missions.lesson=true; touchStreak(); gainXP(30);
+        (lesson.newcards||[]).forEach((c,i)=>S.deck.push({id:unit.id+'-'+i, it:c.it,en:c.en,mn:c.mn,ex:c.ex,due:Date.now(),ivl:0,ease:2.5}));
+        save(); closeSheet(); toast('Station complete! New words added to Ripasso ⚡'); renderLinea();
+      };
+    }
+  }
+  sheetBody(`
+    <div class="concept fadein">
+      <div class="eyebrow" style="color:var(--giallo)">IL CONCETTO</div>
+      <h2>${esc(lesson.concept.title)}</h2>
+      <ul style="padding-left:18px;margin-top:6px">${lesson.concept.bullets.map(b=>`<li style="margin-bottom:4px;font-size:.92rem">${esc(b)}</li>`).join('')}</ul>
+      ${lesson.concept.examples.map(e=>`<div class="ex"><b>${esc(e.it)}</b> <button class="spk" onclick="speak('${esc(e.it).replace(/'/g,"\\'")}')" style="color:var(--giallo);background:none;border:none;cursor:pointer">🔊</button><br><span style="opacity:.8">${esc(e.en)}</span></div>`).join('')}
+    </div>
+    <div class="mnemo"><div class="eyebrow">🧠 MNEMONIC HOOK</div>${esc(lesson.mnemonic)}</div>
+    <button class="btn primary block" id="startDrills">Drill it → (5 quick ones)</button>`);
+  $('#startDrills').onclick=drillView;
+}
+function similar(a,b){
+  const n=s=>s.toLowerCase().replace(/[^a-zàèéìòù ]/g,'').split(/\s+/).filter(Boolean);
+  const A=n(a),B=new Set(n(b)); if(!A.length)return false;
+  return A.filter(w=>B.has(w)).length/Math.max(B.size,1) >= 0.6;
+}
+
+/* ----- Checkpoint oral exam ----- */
+async function openCheckpoint(unit,lv){
+  showSheet(`<div class="eyebrow r">CHECKPOINT · ${lv} ORAL EXAM</div>`,`
+    <div class="card"><h2>3 questions. Answer in Italian — speak or type.</h2>
+    <p class="muted">An AI examiner grades structure, vocabulary, and whether you'd survive this level in the wild. Pass = next zone unlocks.</p></div>
+    <button class="btn primary block" id="startEx">Begin esame →</button>`);
+  $('#startEx').onclick=async()=>{
+    sheetBody(`<div style="text-align:center;padding:40px 0"><span class="spinner"></span><p class="muted" style="margin-top:8px">The examiner is preparing…</p></div>`);
+    const qs = await ai([{role:'user',content:`Generate 3 oral exam questions for CEFR ${lv} Italian (themes from this level: ${CURRICULUM[lv].map(u=>u.t).join(', ')}). Learner is a medical student — make 1 question medically themed if level is A2+. Respond ONLY with JSON: {"questions":["q1 in Italian","q2","q3"]}`}],'JSON only.',true);
+    if(!qs||!qs.questions){ sheetBody('<div class="card">⚠ Connection issue — reopen the checkpoint.</div>'); return; }
+    let qi=0; const answers=[];
+    function ask(){
+      if(qi>=3) return grade();
+      const q=qs.questions[qi];
+      sheetBody(`
+        <div class="eyebrow b">DOMANDA ${qi+1} / 3</div>
+        <div class="card"><h2>${esc(q)} <button class="spk" onclick="speak('${esc(q).replace(/'/g,"\\'")}')" style="background:none;border:none;cursor:pointer">🔊</button></h2></div>
+        <button class="btn primary block" id="exSpeak">🎙 Answer aloud</button>
+        <p class="muted" style="text-align:center;margin:8px 0">or type:</p>
+        <textarea class="bigta" id="exTa" style="min-height:80px"></textarea>
+        <button class="btn dark block" id="exNext" style="margin-top:8px">Submit answer →</button>`);
+      $('#exSpeak').onclick=()=>{ $('#exSpeak').textContent='🔴 Listening…';
+        listen(h=>{$('#exTa').value=h;$('#exSpeak').textContent='🎙 Re-record';},null,()=>{$('#exSpeak').textContent='Mic unavailable — type instead';});
+      };
+      $('#exNext').onclick=()=>{ answers.push({q,a:$('#exTa').value.trim()||'(no answer)'}); qi++; ask(); };
+    }
+    async function grade(){
+      sheetBody(`<div style="text-align:center;padding:40px 0"><span class="spinner"></span><p class="muted" style="margin-top:8px">Grading…</p></div>`);
+      const res = await ai([{role:'user',content:`CEFR ${lv} oral exam. Q&A pairs: ${JSON.stringify(answers)}. Respond ONLY with JSON: {"pass":true|false,"score":"X/10","feedback":"3 short bullet points: what was good, the #1 grammar issue, the #1 thing to drill next. Plain text with • bullets."}`}],'Fair but rigorous Italian oral examiner. Pass requires genuinely adequate level performance, but reward communication over perfection. JSON only.',true);
+      if(!res){ sheetBody('<div class="card">⚠ Grading failed — reopen and retry.</div>'); return; }
+      if(res.pass){
+        S.unitsDone[unit.id]=true;
+        if(S.levelIdx<5 && lv===S.level){ S.levelIdx++; S.level=LEVELS[S.levelIdx]; }
+        gainXP(100); touchStreak(); save();
+      }
+      sheetBody(`
+        <div style="text-align:center;padding:10px 0">
+          <div style="font-family:var(--font-d);font-size:3.4rem;color:${res.pass?'var(--verde)':'var(--rosso)'}">${res.pass?'PROMOSSA':'RIPROVA'}</div>
+          <div class="pill" style="display:inline-block;margin:6px 0">${esc(res.score||'')}</div>
+        </div>
+        <div class="feedback-box">${esc(res.feedback||'')}</div>
+        <button class="btn ${res.pass?'green':'primary'} block" id="exDone" style="margin-top:12px">${res.pass?'Enter '+S.level+' →':'Back to drilling — you\'ll get it'}</button>`);
+      $('#exDone').onclick=()=>{closeSheet();renderLinea();};
+    }
+    ask();
+  };
+}
+
+/* ----- Sheet helpers ----- */
+function showSheet(hd,bd){
+  overlay.innerHTML=`<div class="modal"><div class="sheet">
+    <div class="sheet-hd">${hd}<button class="x" id="sheetX">✕</button></div>
+    <div class="sheet-bd" id="sheetBd">${bd}</div></div></div>`;
+  $('#sheetX').onclick=closeSheet;
+}
+function sheetBody(h){ const b=$('#sheetBd'); if(b){b.innerHTML=h; b.scrollTop=0;} }
+function closeSheet(){ overlay.innerHTML=''; speechSynthesis&&speechSynthesis.cancel(); }
+
+/* =========================================================
+   PARLA — the speaking booth (the heart of the app)
+========================================================= */
+const SCENARIOS = [
+ {id:'bar',em:'☕',t:'Al bar',d:'Order, chat with the barista, complain about the weather',min:'A1'},
+ {id:'amici',em:'🍕',t:'Aperitivo con amici',d:'Casual chat — weekend, gossip, plans',min:'A2'},
+ {id:'farmacia',em:'💊',t:'In farmacia',d:'Describe symptoms, ask for OTC meds',min:'A2',med:true},
+ {id:'paziente',em:'🩺',t:'Anamnesi — you are the doctor',d:'Take a full history from an AI patient',min:'B1',med:true},
+ {id:'collega',em:'🏥',t:'Ward chat with a colleague',d:'Discuss a case with a specializzanda',min:'B2',med:true},
+ {id:'girovisite',em:'🏨',t:'Giro visite — scegli il reparto',d:'Ward round in ANY department: present & get pimped by the strutturato',min:'B1',med:true},
+ {id:'congresso',em:'🎤',t:'Al congresso (ESMO-style)',d:'Coffee-break networking + defend a poster in Italian',min:'B2',med:true},
+ {id:'litigio',em:'😤',t:'La discussione',d:'Politely disagree about something — hold your ground',min:'B2'},
+ {id:'colloquio',em:'💼',t:'Il colloquio',d:'Job/specialty interview — formal register',min:'C1'},
+ {id:'libero',em:'🎲',t:'Parliamo e basta',d:'Free conversation about your interests',min:'A1'}
+];
+let convo=[], recogActive=false, curScen=null;
+
+/* ----- The hospital: every reparto with realistic case seeds ----- */
+const WARDS = [
+ ['Medicina Interna','🩺','scompenso cardiaco riacutizzato, polmonite comunitaria, anemia da indagare'],
+ ['Cardiologia','❤️','NSTEMI, fibrillazione atriale di nuova insorgenza, sospetta endocardite'],
+ ['Pneumologia','🫁','BPCO riacutizzata, versamento pleurico, sospetta embolia polmonare'],
+ ['Gastroenterologia','🟡','pancreatite acuta, cirrosi scompensata con ascite, sanguinamento digestivo'],
+ ['Nefrologia','💧','insufficienza renale acuta, sindrome nefrosica, iperkaliemia severa'],
+ ['Neurologia','🧠','ictus ischemico in finestra, prima crisi epilettica, sospetta sclerosi multipla'],
+ ['Oncologia','🎗','NSCLC in chemioterapia con neutropenia febbrile, CRC metastatico con ascite di nuova insorgenza'],
+ ['Ematologia','🩸','leucemia acuta all\'esordio, linfoma con sindrome da lisi tumorale, anemia emolitica'],
+ ['Malattie Infettive','🦠','sepsi da catetere, TBC polmonare, endocardite su valvola nativa'],
+ ['Chirurgia Generale','🔪','addome acuto, colecistite acuta, decorso post-operatorio complicato'],
+ ['Endocrinologia','⚖️','chetoacidosi diabetica, tireotossicosi, sospetta insufficienza surrenalica'],
+ ['Reumatologia','🦴','artrite di nuova insorgenza, sospetto LES, vasculite con impegno renale'],
+ ['Geriatria','🌿','delirium ipoattivo, cadute ricorrenti, revisione della polifarmacoterapia'],
+ ['Pronto Soccorso','🚨','dolore toracico da stratificare, dispnea acuta, dolore addominale in donna giovane']
+];
+
+function pickWard(s){
+  main.innerHTML = `
+  <div class="fadein">
+    <button class="btn sm" id="backW" style="margin-bottom:10px">← Scenes</button>
+    <div class="eyebrow g">GIRO VISITE · IN QUALE REPARTO SEI OGGI?</div>
+    <h1 style="margin-bottom:10px">Pick your reparto.</h1>
+    <p class="muted" style="margin-bottom:12px">The strutturato invents a realistic inpatient for that ward, asks you to present, and pimps you — all in Italian. Rotate through them like a real clerkship year.</p>
+    <button class="scen med" data-w="-1"><span class="em">🎲</span><span><b>Sorprendimi</b><span>Random ward, random case — exam conditions</span></span></button>
+    ${WARDS.map((w,i)=>`<button class="scen med" data-w="${i}"><span class="em">${w[1]}</span><span><b>${esc(w[0])}</b><span>e.g. ${esc(w[2])}</span></span></button>`).join('')}
+  </div>`;
+  $('#backW').onclick=renderParla;
+  document.querySelectorAll('[data-w]').forEach(b=>b.onclick=()=>{
+    let i=+b.dataset.w; if(i<0) i=Math.floor(Math.random()*WARDS.length);
+    startConvo(Object.assign({}, s, {ward:WARDS[i][0], seeds:WARDS[i][2], em:WARDS[i][1], t:'Giro visite · '+WARDS[i][0]}));
+  });
+}
+
+function renderParla(){
+  convo=[]; curScen=null;
+  main.innerHTML = `
+  <div class="fadein">
+    <div class="eyebrow r">PARLA · THE BOOTH</div>
+    <h1 style="margin-bottom:6px">Speaking is the whole game.</h1>
+    <p class="muted" style="margin-bottom:14px">Pick a scene. The AI talks back in Italian, corrects you gently after every turn, and adapts to your ${S.level}. Speak with the mic, or type if you're somewhere quiet.</p>
+    ${SCENARIOS.filter(s=>LEVELS.indexOf(s.min)<=S.levelIdx+1).map(s=>`
+      <button class="scen ${s.med?'med':''}" data-id="${s.id}">
+        <span class="em">${s.em}</span>
+        <span><b>${esc(s.t)} ${s.med?'<span class="tag gg">MED</span>':''}</b><span>${esc(s.d)} · from ${s.min}</span></span>
+      </button>`).join('')}
+  </div>`;
+  document.querySelectorAll('.scen').forEach(b=>b.onclick=()=>{
+    const s=SCENARIOS.find(x=>x.id===b.dataset.id);
+    if(s.id==='girovisite' && !s.ward) return pickWard(s);
+    startConvo(s);
+  });
+}
+
+function convoSystem(s){
+  return `You are an Italian conversation partner inside a language app. Scenario: "${s.t}" — ${s.d}. Learner level: ${S.level}. Learner interests: ${S.interests.join(', ')}. ${s.id==='paziente'?'You play a PATIENT with a realistic presenting complaint (pick one: chest pain, persistent cough, abdominal pain, headache). Reveal details only when asked correctly, like a real anamnesi. The learner is the doctor.':''} ${s.id==='collega'?'You are a friendly specializzanda in oncologia discussing a realistic case.':''} ${s.id==='girovisite'?`You are the strutturato (attending) on morning rounds in the reparto di ${s.ward||'Medicina Interna'}. Invent ONE realistic inpatient typical of this ward (inspiration: ${s.seeds||'a common admission'}) — give name, age, day of admission. Open by asking the learner (the student on rotation) to present the patient or answer a focused question. Probe their clinical reasoning with short pimping questions appropriate to the ward, gently correct clinical Italian terminology, and reveal new findings (labs, imaging, overnight events) as the round progresses.`:''} ${s.id==='congresso'?'You are an Italian oncologist at a medical congress coffee break. Chat about research, ask about their poster and research interests, use realistic academic small talk.':''}
+RULES: Reply in Italian calibrated slightly above ${S.level} (i+1). Keep replies SHORT (1-3 sentences) and always end with something that invites a response. Stay in character.
+After your Italian reply, respond ONLY with JSON: {"reply":"your in-character Italian","translation":"English translation","fix":"if the learner's last message had an error: the corrected phrase + 6-word explanation; else empty string"}`;
+}
+
+async function startConvo(s){
+  curScen=s;
+  main.innerHTML = `
+  <div class="fadein">
+    <button class="btn sm" id="backP" style="margin-bottom:10px">← Scenes</button>
+    <div class="booth">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div><div class="eyebrow">${s.em} ${esc(s.t).toUpperCase()}</div></div>
+        <span class="pill" style="background:#26262e;color:var(--carta);border-color:#3a3a44" id="turnCt">0 turns</span>
+      </div>
+      <div class="chatlog" id="chatlog"></div>
+      <div class="micbar">
+        <button class="micbtn" id="micBtn" title="Hold a thought, tap, speak">🎙</button>
+        <input id="typeIn" placeholder="…or type in Italian" autocomplete="off">
+        <button class="btn yellow sm" id="sendBtn">→</button>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button class="btn sm yellow" id="stealBtn" style="flex:1">🪤 Steal a word → Ripasso</button>
+        <button class="btn sm" id="slowBtn" style="flex:1;background:#26262e;color:var(--carta);border-color:#3a3a44">🐢 Replay slowly</button>
+      </div>
+      <p class="muted" style="font-size:.7rem;margin-top:8px;color:#777">🔊 replays audio · corrections appear under your bubbles · ${SR?'mic ready':'mic not supported in this browser — typing works'}</p>
+    </div>
+  </div>`;
+  $('#backP').onclick=renderParla;
+  $('#micBtn').onclick=micToggle;
+  $('#stealBtn').onclick=stealWord;
+  $('#slowBtn').onclick=()=>{ const last=lastAIText(); if(last) speak(last,0.65); };
+  $('#sendBtn').onclick=()=>{const v=$('#typeIn').value.trim(); if(v){$('#typeIn').value='';userTurn(v);}};
+  $('#typeIn').addEventListener('keydown',e=>{if(e.key==='Enter')$('#sendBtn').click();});
+  // AI opens the scene
+  addBub('ai','<span class="spinner"></span>');
+  const first = await ai([{role:'user',content:'Open the scene with your first line. (learner said nothing yet, fix must be empty)'}],convoSystem(s),true);
+  replaceLastAI(first);
+}
+let recog=null;
+function lastAIText(){
+  for(let i=convo.length-1;i>=0;i--){ if(convo[i].role==='assistant'){ try{ return JSON.parse(convo[i].content).reply; }catch(e){ return convo[i].content; } } }
+  return null;
+}
+async function stealWord(){
+  const last=lastAIText();
+  if(!last){ toast('Nothing to steal yet — get them talking'); return; }
+  const b=$('#stealBtn'); b.innerHTML='<span class="spinner"></span>'; b.disabled=true;
+  const res = await ai([{role:'user',content:`From this Italian sentence, pick the single most useful word or short phrase for a ${S.level} learner (skip ultra-basic words they obviously know): "${last}"\nRespond ONLY with JSON: {"it":"word/phrase","en":"meaning","mn":"vivid English mnemonic, max 16 words","ex":"the original sentence or a short example"}`}],'Vocabulary coach. JSON only.',true);
+  b.disabled=false; b.innerHTML='🪤 Steal a word → Ripasso';
+  if(!res||!res.it){ toast('Hiccup — try again'); return; }
+  const id='steal-'+res.it.toLowerCase().replace(/\W/g,'');
+  if(S.deck.find(c=>c.id===id)){ toast(`"${res.it}" is already in your deck ✓`); return; }
+  S.deck.push({id, it:res.it, en:res.en, mn:res.mn, ex:res.ex||'', due:Date.now(), ivl:0, ease:2.5});
+  save(); toast(`Stolen: "${res.it}" → Ripasso 🪤`);
+}
+function micToggle(){
+  const b=$('#micBtn');
+  if(recogActive){ recog&&recog.stop(); recogActive=false; b.classList.remove('rec'); b.textContent='🎙'; return; }
+  recogActive=true; b.classList.add('rec'); b.textContent='■';
+  recog=listen(t=>{ userTurn(t); }, ()=>{recogActive=false;b.classList.remove('rec');b.textContent='🎙';},
+   err=>{recogActive=false;b.classList.remove('rec');b.textContent='🎙'; toast(err==='nosr'?'No mic support — type instead':'Mic error — try again');});
+}
+function addBub(who,html){
+  const log=$('#chatlog'); if(!log)return;
+  const d=document.createElement('div'); d.className='bub '+who; d.innerHTML=html;
+  log.appendChild(d); log.scrollTop=log.scrollHeight;
+}
+function replaceLastAI(res){
+  const log=$('#chatlog'); if(!log)return;
+  const last=[...log.querySelectorAll('.bub.ai')].pop();
+  if(!res||!res.reply){ last.innerHTML='⚠ Connection hiccup — send again.'; return; }
+  last.innerHTML=`${esc(res.reply)} <button class="spk">🔊</button><span class="tr">${esc(res.translation||'')}</span>`;
+  last.querySelector('.spk').onclick=()=>speak(res.reply);
+  convo.push({role:'assistant',content:JSON.stringify(res)});
+  speak(res.reply);
+}
+async function userTurn(text){
+  addBub('me',esc(text));
+  convo.push({role:'user',content:text});
+  S.parlaTurns=(S.parlaTurns||0)+1;
+  const t=$('#turnCt'); const myTurns=convo.filter(c=>c.role==='user').length;
+  if(t)t.textContent=myTurns+' turns';
+  addBub('ai','<span class="spinner"></span>');
+  const res = await ai(convo.slice(-12), convoSystem(curScen), true);
+  // attach fix to user's bubble
+  if(res&&res.fix){ const myBubs=[...document.querySelectorAll('.bub.me')]; const mine=myBubs[myBubs.length-1];
+    if(mine) mine.innerHTML+=`<span class="fix">🔧 ${esc(res.fix)}</span>`; }
+  replaceLastAI(res);
+  if(myTurns===5){ S.missions.parla=true; touchStreak(); gainXP(40); save(); toast('Missione completata: 5 turns spoken! +40 XP 🎙'); }
+}
+
+/* =========================================================
+   MEDICINA — corsia survival kit
+========================================================= */
+function renderMed(){
+  main.innerHTML = `
+  <div class="fadein">
+    <div class="med-hero"><span class="cross">✚</span>
+      <div class="eyebrow" style="color:#bfe3d0">MEDICINA · ITALIANO DI CORSIA</div>
+      <h1>Sound like a doctor,<br>not a tourist with a stethoscope.</h1>
+      <p style="font-size:.86rem;margin-top:8px;opacity:.92">Everything here feeds your clerkships: anamnesi scripts, ward vocabulary with mnemonic hooks, and a patient-presentation simulator.</p>
+    </div>
+
+    <div class="card">
+      <div class="eyebrow g">📋 L'ANAMNESI — THE 12-LINE SKELETON</div>
+      <p class="muted" style="margin-bottom:8px">The exact sequence. Tap any line to hear it. Memorize the skeleton, improvise the flesh.</p>
+      ${ANAMNESI.map((a,i)=>`<button class="qopt" style="margin-bottom:6px;box-shadow:none" data-say="${esc(a[0])}">
+        <b style="font-size:.88rem">${i+1}. ${esc(a[0])}</b><br><span class="muted" style="font-size:.74rem">${esc(a[1])}</span></button>`).join('')}
+      <button class="btn green block sm" id="anamDrill" style="margin-top:6px">🎙 Practice live: interview an AI patient →</button>
+    </div>
+
+    <div class="card">
+      <div class="eyebrow g">⚡ VOCAB DECKS — WITH HOOKS</div>
+      ${Object.keys(MED_DECKS).map(k=>`<button class="mission" data-deck="${esc(k)}"><span style="font-size:1.3rem">🃏</span><span><b>${esc(k)}</b><br><span class="muted">${MED_DECKS[k].length} terms · tap to study & add to Ripasso</span></span><span class="st-go" style="margin-left:auto">STUDY</span></button>`).join('')}
+    </div>
+
+    <div class="card">
+      <div class="eyebrow g">🗣 PRESENT A PATIENT</div>
+      <p class="muted">The skill that makes attendings remember you. Present a (fictional!) case in Italian — SBAR style — and get graded like it's rounds.</p>
+      <textarea class="bigta" id="presTa" placeholder="Paziente di 67 anni, ricoverato per…"></textarea>
+      <button class="btn green block sm" id="presGo" style="margin-top:8px">Grade my presentation →</button>
+      <div id="presFb"></div>
+    </div>
+  </div>`;
+  document.querySelectorAll('[data-say]').forEach(b=>b.onclick=()=>speak(b.dataset.say));
+  document.querySelectorAll('[data-deck]').forEach(b=>b.onclick=()=>openMedDeck(b.dataset.deck));
+  $('#anamDrill').onclick=()=>{ startConvo(SCENARIOS.find(s=>s.id==='paziente')); };
+  $('#presGo').onclick=async()=>{
+    const txt=$('#presTa').value.trim();
+    if(txt.length<30){toast('Give me at least a few lines, dottoressa');return;}
+    $('#presGo').innerHTML='<span class="spinner"></span>'; $('#presGo').disabled=true;
+    const fb=await ai([{role:'user',content:`A medical student (Italian level ${S.level}) presented this fictional patient in Italian: """${txt}"""\nGrade it like a kind attending at an Italian teaching hospital. Plain text, under 130 words:\n🩺 STRUCTURE: did it follow paziente→motivo→anamnesi→obiettività→piano? what's missing\n🔧 LANGUAGE: top 2 Italian fixes (error → correction)\n⭐ NATIVE UPGRADE: one phrase rewritten as a real Italian doctor would say it`}],'You are a supportive Italian attending physician and language coach.');
+    $('#presFb').innerHTML=`<div class="feedback-box">${esc(fb)}</div>`;
+    gainXP(25); $('#presGo').textContent='✓ Graded · try another'; $('#presGo').disabled=false;
+  };
+}
+function openMedDeck(name){
+  const cards=MED_DECKS[name];
+  showSheet(`<div class="eyebrow g">DECK · ${esc(name).toUpperCase()}</div>`,
+    cards.map(c=>`
+    <div class="card flat" style="margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline">
+        <b style="font-size:1.05rem">${esc(c[0])}</b>
+        <button class="btn sm" data-say="${esc(c[0])}" style="box-shadow:none;padding:4px 10px">🔊</button>
+      </div>
+      <div class="muted">${esc(c[1])}</div>
+      <div style="background:var(--giallo);border-radius:8px;padding:6px 10px;margin-top:6px;font-size:.8rem">🧠 ${esc(c[2])}</div>
+    </div>`).join('')+
+    `<button class="btn green block" id="addDeck">Add all ${cards.length} to Ripasso ⚡</button>`);
+  document.querySelectorAll('.sheet [data-say]').forEach(b=>b.onclick=()=>speak(b.dataset.say));
+  $('#addDeck').onclick=()=>{
+    let added=0;
+    cards.forEach((c,i)=>{ const id='med-'+name+'-'+i;
+      if(!S.deck.find(x=>x.id===id)){ S.deck.push({id,it:c[0],en:c[1],mn:c[2],ex:'',due:Date.now(),ivl:0,ease:2.5}); added++; } });
+    save(); closeSheet(); toast(added?added+' cards added to Ripasso ⚡':'Already in your deck ✓');
+  };
+}
+
+/* =========================================================
+   CINEMA — prescriptions, not recommendations
+========================================================= */
+function renderCinema(){
+  const myIdx=S.levelIdx;
+  const fits = FILMS.filter(f=>Math.abs(LEVELS.indexOf(f.lv)-myIdx)<=1);
+  const liked = fits.filter(f=>f.g.some(g=>S.interests.includes(g)));
+  const rest = fits.filter(f=>!liked.includes(f));
+  const stretch = FILMS.filter(f=>LEVELS.indexOf(f.lv)===myIdx+2);
+  const ladderText = {
+    0:'IT audio + <b>English subs</b>. Pause & repeat one line per scene out loud.',
+    1:'IT audio + <b>English subs</b>, but rewatch favorite scenes with <b>Italian subs</b>.',
+    2:'IT audio + <b>Italian subs</b>. EN subs only as emergency parachute.',
+    3:'IT audio + <b>Italian subs</b>, second viewing <b>no subs</b>.',
+    4:'<b>No subs.</b> IT subs only for dialect-heavy scenes.',
+    5:'No subs, ever. Now you\'re watching for fun, like a native — because you are one.'
+  }[myIdx];
+  main.innerHTML = `
+  <div class="fadein">
+    <div class="eyebrow r">CINEMA · PRESCRIBED INPUT</div>
+    <h1 style="margin-bottom:6px">Watch your way to fluent.</h1>
+    <div class="card" style="background:var(--ink);color:var(--carta)">
+      <div class="eyebrow" style="color:var(--giallo)">YOUR SUBTITLE LADDER AT ${S.level}</div>
+      <p style="font-size:.9rem">${ladderText}</p>
+      <p style="font-size:.78rem;opacity:.7;margin-top:6px">Rule of thumb: subtitles are training wheels — keep them exactly one notch behind your comfort, never two.</p>
+    </div>
+    ${liked.length?`<div class="eyebrow b" style="margin-top:6px">PRESCRIBED FOR YOU (${S.interests.join(' · ')})</div>${liked.map(filmCard).join('')}`:''}
+    <div class="eyebrow b" style="margin-top:6px">ALSO AT YOUR LEVEL</div>
+    ${rest.map(filmCard).join('')}
+    ${stretch.length?`<div class="eyebrow r" style="margin-top:6px">STRETCH GOALS 🏔</div>${stretch.map(filmCard).join('')}`:''}
+    <div class="card" style="background:var(--carta2)">
+      <div class="eyebrow">HOW TO WATCH (THE ADHD WAY)</div>
+      <p style="font-size:.86rem"><b>20-minute blocks, one episode ≠ one sitting.</b> After each block: say <i>one</i> line you heard, out loud, in the character's voice. Steal one word for Ripasso. That's it. Watching counts as studying — that's the whole point.</p>
+    </div>
+  </div>`;
+}
+function filmCard(f){
+  return `<div class="film">
+    <div class="poster" style="background:${f.c}">${f.e}</div>
+    <div><b>${esc(f.t)}</b> <span class="tag ${f.lv[0]==='A'?'a':f.lv[0]==='B'?'bb':'rr'}">${f.lv}</span>
+      <div class="meta">📺 ${esc(f.w)} · ${f.g.join(' · ')}</div>
+      <p>${f.why}</p>
+    </div>
+  </div>`;
+}
+
+/* =========================================================
+   RIPASSO — SRS with mnemonics
+========================================================= */
+function renderSRS(){
+  const due=S.deck.filter(c=>c.due<=Date.now()).sort((a,b)=>a.due-b.due);
+  if(!due.length){
+    main.innerHTML=`<div class="fadein" style="text-align:center;padding-top:50px">
+      <div style="font-size:3.4rem">🏖</div><h1>Tutto fatto.</h1>
+      <p class="muted">No cards due. ${S.deck.length} cards in your deck — next reviews are scheduled. Go speak something instead.</p>
+      <button class="btn primary" style="margin-top:14px" id="goParla">🎙 To the booth →</button></div>`;
+    $('#goParla').onclick=()=>setTab('parla');
+    if(!S.missions.srs){ S.missions.srs=true; save(); }
+    return;
+  }
+  let i=0;
+  function show(){
+    if(i>=due.length){ S.missions.srs=true; touchStreak(); gainXP(20); save();
+      main.innerHTML=`<div class="fadein" style="text-align:center;padding-top:50px"><div style="font-size:3.4rem">⚡</div><h1>Queue cleared!</h1><p class="muted">+20 XP. Your brain just did its push-ups.</p><button class="btn green" style="margin-top:14px" id="bk">Back to Oggi →</button></div>`;
+      $('#bk').onclick=()=>setTab('oggi'); return; }
+    const c=due[i];
+    main.innerHTML=`
+    <div class="fadein">
+      <div class="eyebrow r">RIPASSO · ${i+1} / ${due.length}</div>
+      <div class="progressbar" style="margin-bottom:14px"><div style="width:${i/due.length*100}%"></div></div>
+      <div class="srscard"><div class="srsinner" id="srsIn">
+        <div class="srsface front">
+          <div class="eyebrow">WHAT DOES IT MEAN?</div>
+          <div class="word">${esc(c.it)}</div>
+          <button class="btn sm yellow" id="sayIt">🔊 hear it</button>
+          <button class="btn dark" id="flipB" style="margin-top:8px">Flip →</button>
+        </div>
+        <div class="srsface back">
+          <div class="word">${esc(c.it)}</div>
+          <div style="font-size:1.05rem;font-weight:600">${esc(c.en)}</div>
+          ${c.mn?`<div style="background:var(--giallo);color:var(--ink);border-radius:10px;padding:8px 12px;font-size:.82rem">🧠 ${esc(c.mn)}</div>`:''}
+          ${c.ex?`<div style="font-size:.8rem;opacity:.8;font-style:italic">"${esc(c.ex)}"</div>`:''}
+          ${!c.mn?`<button class="btn sm yellow" id="genMn">🧠 Make me a mnemonic</button>`:''}
+        </div>
+      </div></div>
+      <div class="gradebtns" id="grades" style="visibility:hidden">
+        <button class="btn" data-g="0" style="background:var(--rosso);color:#fff">Again<br><span style="font-size:.62rem">&lt;1m</span></button>
+        <button class="btn" data-g="1" style="background:var(--giallo)">Hard<br><span style="font-size:.62rem">1d</span></button>
+        <button class="btn" data-g="2">Good<br><span style="font-size:.62rem">${fmtIvl(nextIvl(c,2))}</span></button>
+        <button class="btn" data-g="3" style="background:var(--verde);color:#fff">Easy<br><span style="font-size:.62rem">${fmtIvl(nextIvl(c,3))}</span></button>
+      </div>
+    </div>`;
+    $('#sayIt').onclick=()=>speak(c.it);
+    $('#flipB').onclick=()=>{ $('#srsIn').classList.add('flip'); $('#grades').style.visibility='visible'; speak(c.it); };
+    const gm=$('#genMn'); if(gm) gm.onclick=async()=>{ gm.innerHTML='<span class="spinner"></span>';
+      const m=await ai([{role:'user',content:`Create one vivid, slightly absurd English mnemonic (max 18 words) for the Italian word "${c.it}" meaning "${c.en}". Respond with the mnemonic only.`}],'Mnemonic genius. Output the mnemonic sentence only.');
+      c.mn=m.trim(); save(); show(); setTimeout(()=>{$('#srsIn').classList.add('flip');$('#grades').style.visibility='visible';},50); };
+    document.querySelectorAll('#grades .btn').forEach(b=>b.onclick=()=>{ gradeCard(c,+b.dataset.g); i++; show(); });
+  }
+  show();
+}
+function nextIvl(c,g){ // simplified SM-2
+  if(g===0) return 0;
+  if(c.ivl===0) return g===3?3:1;
+  const e = Math.max(1.3, c.ease + (g===1?-0.2:g===3?0.15:0));
+  return Math.round(c.ivl*(g===1?1.2:e));
+}
+function fmtIvl(d){ return d===0?'<1m':d<30?d+'d':Math.round(d/30)+'mo'; }
+function gradeCard(c,g){
+  if(g===0){ c.ivl=0; c.due=Date.now()+60000; c.ease=Math.max(1.3,c.ease-0.2); }
+  else{ const ni=nextIvl(c,g); c.ease=Math.max(1.3,c.ease+(g===1?-0.15:g===3?0.15:0)); c.ivl=ni; c.due=Date.now()+ni*86400000; }
+  save();
+}
+
+/* =========================================================
+   BOOT
+========================================================= */
+(async function(){
+  await loadState();
+  renderHeader();
+  if(!S.placed){ renderOnboarding(); }
+  else{ touchStreak(); $('#nav').style.display='flex'; setTab('oggi'); }
+})();
+</script>
+</body>
+</html>
