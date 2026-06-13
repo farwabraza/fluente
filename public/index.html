@@ -207,6 +207,7 @@ button:focus-visible,.chip:focus-visible,.qopt:focus-visible{outline:3px solid v
     <button data-tab="parla"><span class="ic">🎙</span>PARLA<span class="dot"></span></button>
     <button data-tab="med"><span class="ic">✚</span>MEDICINA<span class="dot"></span></button>
     <button data-tab="cinema"><span class="ic">🎞</span>CINEMA<span class="dot"></span></button>
+    <button data-tab="verbi"><span class="ic">⚙</span>VERBI<span class="dot"></span></button>
     <button data-tab="srs"><span class="ic">⚡</span>RIPASSO<span class="dot"></span></button>
   </nav>
 </div>
@@ -265,24 +266,30 @@ async function pushState(){
 if('serviceWorker' in navigator){ window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{})); }
 
 /* ---------- AI (proxied through our own server — API key lives in Replit Secrets) ---------- */
-async function ai(messages, system, expectJSON=false){
-  try{
-    const res = await fetch("/api/chat",{
-      method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({messages, system})
-    });
-    const data = await res.json();
-    if(data.error){ console.error(data.error); return expectJSON?null:"⚠ "+(data.error.message||'API error — check your key in Replit Secrets.'); }
-    let text = (data.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("\n");
-    if(expectJSON){
-      text = text.replace(/```json|```/g,'').trim();
-      const a = text.indexOf('{'), b = text.lastIndexOf('}');
-      const aa = text.indexOf('['), bb = text.lastIndexOf(']');
-      if(aa>-1 && (aa<a || a===-1)) return JSON.parse(text.slice(aa,bb+1));
-      return JSON.parse(text.slice(a,b+1));
-    }
-    return text;
-  }catch(e){ console.error('AI error',e); return expectJSON ? null : "⚠ Connection hiccup — tap to retry."; }
+async function ai(messages, system, expectJSON=false, maxTokens=1000){
+  for(let attempt=1; attempt<=2; attempt++){
+    try{
+      const res = await fetch("/api/chat",{
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({messages, system, max_tokens:maxTokens})
+      });
+      const data = await res.json();
+      if(data.error){ console.error(data.error); if(attempt<2) continue;
+        return expectJSON?null:"⚠ "+(data.error.message||'API error — check your key in Render Environment.'); }
+      let text = (data.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("\n");
+      if(expectJSON){
+        text = text.replace(/```json|```/g,'').trim();
+        const a = text.indexOf('{'), b = text.lastIndexOf('}');
+        const aa = text.indexOf('['), bb = text.lastIndexOf(']');
+        try{
+          if(aa>-1 && (aa<a || a===-1)) return JSON.parse(text.slice(aa,bb+1));
+          return JSON.parse(text.slice(a,b+1));
+        }catch(parseErr){ console.error('JSON parse fail, attempt',attempt); if(attempt<2) continue; return null; }
+      }
+      return text;
+    }catch(e){ console.error('AI error',e); if(attempt<2){ await new Promise(r=>setTimeout(r,800)); continue; } return expectJSON ? null : "⚠ Connection hiccup — tap to retry."; }
+  }
+  return expectJSON?null:"⚠ Connection hiccup — tap to retry.";
 }
 
 /* ---------- SPEECH ---------- */
@@ -485,7 +492,7 @@ function renderHeader(){
 function setTab(t){
   TAB=t;
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.tab===t));
-  ({oggi:renderOggi,linea:renderLinea,parla:renderParla,med:renderMed,cinema:renderCinema,srs:renderSRS})[t]();
+  ({oggi:renderOggi,linea:renderLinea,parla:renderParla,med:renderMed,cinema:renderCinema,verbi:renderVerbi,srs:renderSRS})[t]();
   main.scrollTop=0; window.scrollTo(0,0);
 }
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>setTab(b.dataset.tab));
@@ -842,7 +849,7 @@ Respond ONLY with JSON:
 "mnemonic":"one vivid memory hook for the trickiest part of this topic",
 "drills":[{"q":"question (can include ___ gaps)","options":["4 options"],"answer":0,"why":"8-word explanation"} x5 — calibrate difficulty to ${lv}],
 "speak":{"prompt":"a single sentence the learner must say aloud in Italian, using today's grammar","model":"the model Italian sentence"},
-"newcards":[{"it":"word/phrase from this lesson","en":"meaning","mn":"mnemonic","ex":"example sentence"} x2]}`}],'You are a brilliant Italian curriculum designer. JSON only, no markdown fences. Drills must genuinely test the concept.',true);
+"newcards":[{"it":"word/phrase from this lesson","en":"meaning","mn":"mnemonic","ex":"example sentence"} x2]}`}],'You are a brilliant Italian curriculum designer. JSON only, no markdown fences. Drills must genuinely test the concept.',true,3000);
   if(!lesson){ sheetBody(`<div class="card">⚠ Couldn't build the lesson — check connection and tap the station again.</div>`); return; }
   let di=0, correct=0;
   function drillView(){
@@ -1361,6 +1368,184 @@ function enterApp(){
 function signOut(){
   localStorage.removeItem('fluente-creds'); localStorage.removeItem('fluente-skip-login');
   CREDS=null; syncStatus='local'; renderLogin();
+}
+
+/* =========================================================
+   VERBI — the conjugation school (built around congiuntivo)
+   Philosophy: endings are easy; knowing WHEN is the battle.
+========================================================= */
+
+// Regular endings, every tense, all three groups
+const CONJ = {
+  pronouns:['io','tu','lui/lei','noi','voi','loro'],
+  presente:{ '-are':['o','i','a','iamo','ate','ano'], '-ere':['o','i','e','iamo','ete','ono'], '-ire':['o','i','e','iamo','ite','ono'], '-ire(isc)':['isco','isci','isce','iamo','ite','iscono'] },
+  imperfetto:{ '-are':['avo','avi','ava','avamo','avate','avano'], '-ere':['evo','evi','eva','evamo','evate','evano'], '-ire':['ivo','ivi','iva','ivamo','ivate','ivano'] },
+  futuro:{ '-are':['erò','erai','erà','eremo','erete','eranno'], '-ere':['erò','erai','erà','eremo','erete','eranno'], '-ire':['irò','irai','irà','iremo','irete','iranno'] },
+  condizionale:{ '-are':['erei','eresti','erebbe','eremmo','ereste','erebbero'], '-ere':['erei','eresti','erebbe','eremmo','ereste','erebbero'], '-ire':['irei','iresti','irebbe','iremmo','ireste','irebbero'] },
+  'congiuntivo presente':{ '-are':['i','i','i','iamo','iate','ino'], '-ere':['a','a','a','iamo','iate','ano'], '-ire':['a','a','a','iamo','iate','ano'], '-ire(isc)':['isca','isca','isca','iamo','iate','iscano'] },
+  'congiuntivo imperfetto':{ '-are':['assi','assi','asse','assimo','aste','assero'], '-ere':['essi','essi','esse','essimo','este','essero'], '-ire':['issi','issi','isse','issimo','iste','issero'] }
+};
+const STEM_DROP = {'-are':3,'-ere':3,'-ire':3,'-ire(isc)':3};
+const ISC_VERBS = ['capire','finire','preferire','pulire','spedire','colpire','guarire','costruire','restituire','suggerire'];
+function conjugateRegular(verb, tense){
+  let group = verb.endsWith('are')?'-are':verb.endsWith('ere')?'-ere':'-ire';
+  const stem = verb.slice(0,-3);
+  // -isc- insertion verbs: only in presente & congiuntivo presente
+  if(group==='-ire' && ISC_VERBS.includes(verb) && CONJ[tense] && CONJ[tense]['-ire(isc)']){
+    return CONJ[tense]['-ire(isc)'].map(e=>stem+e);
+  }
+  const ends = CONJ[tense][group];
+  return ends.map(e=>stem+e);
+}
+
+// High-frequency irregulars worth memorizing cold
+const IRREGULARS = {
+  essere:{ presente:['sono','sei','è','siamo','siete','sono'], imperfetto:['ero','eri','era','eravamo','eravate','erano'], futuro:['sarò','sarai','sarà','saremo','sarete','saranno'], condizionale:['sarei','saresti','sarebbe','saremmo','sareste','sarebbero'], 'congiuntivo presente':['sia','sia','sia','siamo','siate','siano'], 'congiuntivo imperfetto':['fossi','fossi','fosse','fossimo','foste','fossero'] },
+  avere:{ presente:['ho','hai','ha','abbiamo','avete','hanno'], imperfetto:['avevo','avevi','aveva','avevamo','avevate','avevano'], futuro:['avrò','avrai','avrà','avremo','avrete','avranno'], condizionale:['avrei','avresti','avrebbe','avremmo','avreste','avrebbero'], 'congiuntivo presente':['abbia','abbia','abbia','abbiamo','abbiate','abbiano'], 'congiuntivo imperfetto':['avessi','avessi','avesse','avessimo','aveste','avessero'] },
+  fare:{ presente:['faccio','fai','fa','facciamo','fate','fanno'], imperfetto:['facevo','facevi','faceva','facevamo','facevate','facevano'], futuro:['farò','farai','farà','faremo','farete','faranno'], condizionale:['farei','faresti','farebbe','faremmo','fareste','farebbero'], 'congiuntivo presente':['faccia','faccia','faccia','facciamo','facciate','facciano'], 'congiuntivo imperfetto':['facessi','facessi','facesse','facessimo','faceste','facessero'] },
+  andare:{ presente:['vado','vai','va','andiamo','andate','vanno'], imperfetto:['andavo','andavi','andava','andavamo','andavate','andavano'], futuro:['andrò','andrai','andrà','andremo','andrete','andranno'], condizionale:['andrei','andresti','andrebbe','andremmo','andreste','andrebbero'], 'congiuntivo presente':['vada','vada','vada','andiamo','andiate','vadano'], 'congiuntivo imperfetto':['andassi','andassi','andasse','andassimo','andaste','andassero'] },
+  potere:{ presente:['posso','puoi','può','possiamo','potete','possono'], imperfetto:['potevo','potevi','poteva','potevamo','potevate','potevano'], futuro:['potrò','potrai','potrà','potremo','potrete','potranno'], condizionale:['potrei','potresti','potrebbe','potremmo','potreste','potrebbero'], 'congiuntivo presente':['possa','possa','possa','possiamo','possiate','possano'], 'congiuntivo imperfetto':['potessi','potessi','potesse','potessimo','poteste','potessero'] },
+  volere:{ presente:['voglio','vuoi','vuole','vogliamo','volete','vogliono'], imperfetto:['volevo','volevi','voleva','volevamo','volevate','volevano'], futuro:['vorrò','vorrai','vorrà','vorremo','vorrete','vorranno'], condizionale:['vorrei','vorresti','vorrebbe','vorremmo','vorreste','vorrebbero'], 'congiuntivo presente':['voglia','voglia','voglia','vogliamo','vogliate','vogliano'], 'congiuntivo imperfetto':['volessi','volessi','volesse','volessimo','voleste','volessero'] }
+};
+
+// THE trigger list — congiuntivo's "WEIRDO". This is the actual lesson.
+const TRIGGERS = [
+ ['Opinione / pensiero','penso che, credo che, mi sembra che','Penso che tu abbia ragione.','You THINK it — it\'s in your head, not fact → congiuntivo.'],
+ ['Volontà / desiderio','voglio che, spero che, desidero che','Spero che tu stia bene.','You WANT it to happen — it hasn\'t yet → congiuntivo.'],
+ ['Emozione','sono felice che, temo che, mi dispiace che','Temo che sia troppo tardi.','FEELINGS about something uncertain → congiuntivo.'],
+ ['Dubbio / possibilità','è possibile che, può darsi che, dubito che','Può darsi che piova.','DOUBT, by definition not certain → congiuntivo.'],
+ ['Necessità impersonale','bisogna che, è necessario che, è importante che','Bisogna che tu studi.','An impersonal MUST → congiuntivo.'],
+ ['Congiunzioni','benché, sebbene, affinché, prima che, purché','Sebbene sia stanca, continuo.','These conjunctions ALWAYS drag congiuntivo behind them.'],
+ ['Superlativo / indefinito','il più... che, chiunque, qualunque','È la cosa più bella che io abbia visto.','Extreme or vague antecedent → congiuntivo.']
+];
+const TRIGGER_MNEMONIC = 'VEDONO un Congiuntivo: Volontà, Emozione, Dubbio, Opinione, Necessità, cOngiunzioni. If the main clause VEDONO (sees) one of these + "che", the second verb goes congiuntivo.';
+
+let vbVerb='parlare', vbTense='congiuntivo presente';
+function renderVerbi(){
+  main.innerHTML = `
+  <div class="fadein">
+    <div class="eyebrow r">VERBI · LA SCUOLA DI CONIUGAZIONE</div>
+    <h1 style="margin-bottom:6px">Verbs, finally making sense.</h1>
+    <p class="muted" style="margin-bottom:14px">The secret nobody tells you: the congiuntivo endings are easy. The hard part is spotting <b>when</b> it's triggered. So we'll drill the trigger first, the endings second.</p>
+
+    <div class="card" style="background:var(--blu);color:#fff;border-color:var(--ink)">
+      <div class="eyebrow" style="color:var(--giallo)">🎯 START HERE · WHY CONGIUNTIVO EXISTS</div>
+      <p style="font-size:.92rem"><b>Indicativo = facts.</b> "So che <u>è</u> medico" — I KNOW he is.<br><b>Congiuntivo = everything unreal:</b> opinions, wishes, doubts, emotions. "Penso che <u>sia</u> medico" — I THINK (but don't know).</p>
+      <p style="font-size:.88rem;margin-top:8px">Italian splits the world into <i>certain</i> vs <i>uncertain</i>, and forces the verb to wear a different coat for each. English mostly stopped doing this — that's why it feels insane. It's not illogical, it's just a rule English dropped.</p>
+    </div>
+
+    <div class="mnemo"><div class="eyebrow">🧠 THE MASTER MNEMONIC · "VEDONO"</div>${esc(TRIGGER_MNEMONIC)}</div>
+
+    <div class="eyebrow b">THE 7 TRIGGERS · tap to hear the example</div>
+    ${TRIGGERS.map((t,i)=>`
+      <div class="card flat" style="margin-bottom:8px;border-left:6px solid var(--rosso)">
+        <div style="display:flex;justify-content:space-between;align-items:baseline">
+          <b style="font-size:.95rem">${i+1}. ${esc(t[0])}</b>
+          <button class="btn sm" data-say="${esc(t[2])}" style="box-shadow:none;padding:3px 8px">🔊</button>
+        </div>
+        <div class="muted" style="font-size:.8rem;margin:2px 0 6px"><b>Signals:</b> ${esc(t[1])}</div>
+        <div style="background:#fff;border:1.5px solid var(--ink);border-radius:8px;padding:6px 10px;font-size:.88rem">${esc(t[2])}</div>
+        <div style="font-size:.78rem;color:var(--verde);font-weight:600;margin-top:5px">→ ${esc(t[3])}</div>
+      </div>`).join('')}
+
+    <div class="eyebrow b" style="margin-top:14px">⚙ THE CONJUGATOR · pick a verb + tense</div>
+    <div class="card">
+      <div class="row" style="margin-bottom:10px">
+        <input class="ti" id="vbInput" value="${vbVerb}" placeholder="any verb e.g. parlare" style="flex:2" autocapitalize="off">
+        <select id="vbTense" style="flex:1.4;border:2px solid var(--ink);border-radius:12px;padding:12px;background:#fff">
+          ${['presente','imperfetto','futuro','condizionale','congiuntivo presente','congiuntivo imperfetto'].map(t=>`<option ${t===vbTense?'selected':''}>${t}</option>`).join('')}
+        </select>
+      </div>
+      <div class="row" style="margin-bottom:10px">
+        ${['parlare','credere','dormire','capire','essere','avere','fare','andare','potere','volere'].map(v=>`<button class="chip" data-v="${v}" style="font-size:.78rem;padding:5px 10px">${v}</button>`).join('')}
+      </div>
+      <div id="vbTable"></div>
+    </div>
+
+    <div class="card" style="border-left:8px solid var(--verde)">
+      <div class="eyebrow g">🤖 ASK THE VERB TUTOR</div>
+      <p class="muted">Stuck on a specific sentence? Paste it — "why is it 'sia' here and not 'è'?" — and get it explained for your level.</p>
+      <textarea class="bigta" id="vbAsk" placeholder="e.g. Why is it 'Voglio che tu venga' and not 'vieni'?" style="min-height:70px"></textarea>
+      <button class="btn green block sm" id="vbAskGo" style="margin-top:8px">Explain it →</button>
+      <div id="vbAskFb"></div>
+    </div>
+
+    <div class="row">
+      <button class="btn dark" id="vbDrill" style="flex:1">🎯 Trigger drill<br><span style="font-size:.64rem;font-weight:400">indicativo or congiuntivo?</span></button>
+      <button class="btn yellow" id="vbSprint" style="flex:1">⏱ Verb Sprint<br><span style="font-size:.64rem;font-weight:400">conjugation speed run</span></button>
+    </div>
+  </div>`;
+  document.querySelectorAll('[data-say]').forEach(b=>b.onclick=()=>speak(b.dataset.say));
+  document.querySelectorAll('[data-v]').forEach(b=>b.onclick=()=>{ vbVerb=b.dataset.v; $('#vbInput').value=vbVerb; drawTable(); });
+  $('#vbInput').addEventListener('input',e=>{ vbVerb=e.target.value.trim().toLowerCase(); drawTable(); });
+  $('#vbTense').addEventListener('change',e=>{ vbTense=e.target.value; drawTable(); });
+  $('#vbDrill').onclick=triggerDrill;
+  $('#vbSprint').onclick=renderSprint;
+  $('#vbAskGo').onclick=async()=>{
+    const q=$('#vbAsk').value.trim(); if(q.length<5){toast('Type your question first');return;}
+    $('#vbAskGo').innerHTML='<span class="spinner"></span>'; $('#vbAskGo').disabled=true;
+    const fb=await ai([{role:'user',content:`An Italian learner at level ${S.level} asks about verbs/conjugation: "${q}". Explain clearly and SHORT (under 110 words). If congiuntivo is involved, name the trigger. Give one extra example. Plain text, no markdown headers. Be encouraging — they find Italian grammar overwhelming.`}],'You are a patient Italian grammar tutor who makes the congiuntivo feel logical, not scary.');
+    $('#vbAskFb').innerHTML=`<div class="feedback-box">${esc(fb)}</div>`;
+    $('#vbAskGo').textContent='Ask another →'; $('#vbAskGo').disabled=false;
+  };
+  drawTable();
+}
+
+function drawTable(){
+  const box=$('#vbTable'); if(!box) return;
+  const v=vbVerb;
+  let rows, note='', irr=IRREGULARS[v];
+  if(irr && irr[vbTense]){ rows=irr[vbTense]; note='⚠ irregular — memorize this one cold'; }
+  else if(/are$|ere$|ire$/.test(v)){
+    rows=conjugateRegular(v,vbTense);
+    if(v.endsWith('ire')) note='regular -ire (note: capire-type verbs add -isc-)';
+    else note='regular pattern';
+  } else { box.innerHTML='<p class="muted">Type a full infinitive ending in -are, -ere, or -ire.</p>'; return; }
+  const isCong=vbTense.includes('congiuntivo');
+  box.innerHTML=`
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <b style="font-family:var(--font-d);font-size:1.05rem">${esc(v)} · ${esc(vbTense)}</b>
+      <button class="btn sm yellow" id="vbHear" style="box-shadow:none;padding:4px 10px">🔊 all</button>
+    </div>
+    <div style="border:2px solid var(--ink);border-radius:10px;overflow:hidden">
+      ${CONJ.pronouns.map((p,i)=>`<div style="display:flex;${i%2?'background:var(--carta2);':'background:#fff;'}${i?'border-top:1px solid var(--ink);':''}">
+        <div style="flex:1;padding:8px 12px;font-family:var(--font-m);font-size:.82rem;font-weight:700;border-right:2px solid var(--ink)">${isCong?'che '+p:p}</div>
+        <div style="flex:1.4;padding:8px 12px;font-weight:600">${esc(rows[i])}</div>
+      </div>`).join('')}
+    </div>
+    <p class="muted" style="font-size:.76rem;margin-top:6px">${note}</p>
+    ${isCong?`<div style="background:var(--giallo);border:1.5px solid var(--ink);border-radius:8px;padding:7px 10px;font-size:.8rem;margin-top:6px">💡 Notice io/tu/lui are <b>identical</b> in the congiuntivo — that's why Italians add the pronoun ("che <b>io</b> sia") to avoid confusion.</div>`:''}`;
+  $('#vbHear').onclick=()=>{ const txt=CONJ.pronouns.map((p,i)=>(isCong?'che '+p:p)+' '+rows[i]).join(', '); speak(txt,0.9); };
+}
+
+/* ----- Trigger drill: the actual skill — spot indicativo vs congiuntivo ----- */
+async function triggerDrill(){
+  showSheet('<div class="eyebrow r">TRIGGER DRILL</div>','<div style="text-align:center;padding:40px 0"><span class="spinner"></span><p class="muted" style="margin-top:8px">Building 6 sentences…</p></div>');
+  const set = await ai([{role:'user',content:`Generate 6 Italian fill-in sentences for a ${S.level} learner practicing indicativo vs congiuntivo. Mix triggers (opinione, volontà, dubbio, emozione, congiunzioni like benché/sebbene, bisogna che) AND a couple of FACT sentences that correctly take indicativo (so che, è vero che, sono sicuro che). Respond ONLY with JSON: {"items":[{"sentence":"... ___ ...","verb":"infinitive to conjugate","options":["form A","form B"],"answer":0,"why":"8-12 word reason naming the trigger or 'fact → indicativo'"}]} — make the two options the indicativo vs congiuntivo form of the same verb/person.`}],'Italian grammar drill writer. JSON only.',true,2000);
+  if(!set||!set.items){ sheetBody('<div class="card">⚠ Couldn\'t build — reopen the drill.</div>'); return; }
+  let i=0,correct=0;
+  function show(){
+    if(i>=set.items.length){
+      gainXP(20); touchStreak(); save();
+      sheetBody(`<div style="text-align:center;padding:20px 0"><div style="font-size:3rem">${correct>=5?'🏆':correct>=3?'💪':'📚'}</div><h1>${correct}/${set.items.length}</h1><p class="muted">+20 XP. The trigger is the whole game — endings follow automatically once you SEE it coming.</p><button class="btn primary block" id="dDone" style="margin-top:14px">Close</button></div>`);
+      $('#dDone').onclick=closeSheet; return;
+    }
+    const it=set.items[i];
+    sheetBody(`
+      <div class="eyebrow b">${i+1} / ${set.items.length}</div>
+      <div class="card"><h2 style="font-size:1.1rem">${esc(it.sentence)}</h2>
+        <p class="muted">Conjugate: <b>${esc(it.verb)}</b></p></div>
+      ${it.options.map((o,k)=>`<button class="qopt" data-k="${k}">${esc(o)}</button>`).join('')}
+      <div id="dFb"></div>`);
+    document.querySelectorAll('.sheet .qopt').forEach(b=>b.onclick=()=>{
+      const k=+b.dataset.k;
+      document.querySelectorAll('.sheet .qopt').forEach(x=>x.disabled=true);
+      if(k===it.answer){b.classList.add('right');correct++;} else {b.classList.add('wrong');document.querySelectorAll('.sheet .qopt')[it.answer].classList.add('right');}
+      $('#dFb').innerHTML=`<div class="mnemo" style="margin-top:10px"><b>${k===it.answer?'✓':'✗'} </b>${esc(it.why)}</div><button class="btn dark block" id="dN">${i<set.items.length-1?'Next →':'See score →'}</button>`;
+      $('#dN').onclick=()=>{i++;show();};
+    });
+  }
+  show();
 }
 
 /* =========================================================
