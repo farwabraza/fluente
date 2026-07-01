@@ -224,7 +224,8 @@ button:focus-visible,.chip:focus-visible,.qopt:focus-visible{outline:3px solid v
 const DEFAULT_STATE = {
   placed:false, level:'A1', levelIdx:0, xp:0, streak:0, lastDay:null,
   interests:[], name:'', unitsDone:{}, missions:{}, missionDay:null,
-  deck:null, parlaTurns:0, writeDone:{}, xpLog:{}
+  deck:null, parlaTurns:0, writeDone:{}, xpLog:{},
+  errLog:{}, examLog:[], freqSeen:{}
 };
 let S = JSON.parse(JSON.stringify(DEFAULT_STATE));
 let storageOK = true;
@@ -249,6 +250,10 @@ async function loadState(){
   }
   if(!S.deck) S.deck = buildStarterDeck();
   if(!S.xpLog) S.xpLog = {};
+  if(!S.errLog) S.errLog = {};
+  if(!S.examLog) S.examLog = [];
+  if(!S.freqSeen) S.freqSeen = {};
+  S.deck.forEach(c=>{ if(c.lapses==null) c.lapses=0; });
 }
 async function save(){
   S._ts = Date.now();
@@ -626,11 +631,27 @@ function renderOggi(){
     <button class="mission ${m.srs?'done':''}" id="m3"><span class="chk">${m.srs?'✓':''}</span><span><b>Clear your due cards</b><br><span class="muted">${dueCount()} waiting in Ripasso</span></span><span style="margin-left:auto" class="tag bb">+20</span></button>
     <button class="mission ${m.scrivi?'done':''}" id="m4"><span class="chk">${m.scrivi?'✓':''}</span><span><b>Scrivi — 3 sentences, AI-corrected</b><br><span class="muted">Today's prompt below</span></span><span style="margin-left:auto" class="tag gg">+25</span></button>
     <div id="scriviBox"></div>
+    ${(function(){ const g=topGaps(3); return `
+    <div class="eyebrow r" style="margin-top:16px">LE TUE LACUNE · GAP MAP</div>
+    <button class="mission" id="gapRow">
+      <span style="font-size:1.3rem">🗺</span>
+      <span>${g.length
+        ? `<b>Top weakness: ${esc(ERR_TAX[g[0].t][0])}</b><br><span class="muted">${g.map(x=>esc(ERR_TAX[x.t][0])+' ×'+x.n).join(' · ')}</span>`
+        : `<b>No gaps mapped yet</b><br><span class="muted">Speak, write or drill — every mistake gets tagged here</span>`}</span>
+      <span class="st-go" style="margin-left:auto">${g.length?'RIPARA':'APRI'}</span>
+    </button>`; })()}
+    <button class="mission" id="esameRow">
+      <span style="font-size:1.3rem">🎓</span>
+      <span><b>Esame — CILS/CELI simulator</b><br><span class="muted">Scritta · orale · ascolto · lettura, rubric-graded${S.examLog.length?' · last: '+S.examLog[S.examLog.length-1].tot+'/20':''}</span></span>
+      <span class="st-go" style="margin-left:auto">VAI</span>
+    </button>
     <div class="eyebrow b" style="margin-top:16px">BONUS ROUNDS · got 3 more minutes?</div>
-    <div class="row" style="margin-bottom:14px">
+    <div class="row" style="margin-bottom:8px">
       <button class="btn sm yellow" id="bDett" style="flex:1">👂 Dettato<br><span style="font-size:.64rem;font-weight:400">type what you hear</span></button>
       <button class="btn sm dark" id="bSpr" style="flex:1">⏱ Verb Sprint<br><span style="font-size:.64rem;font-weight:400">60s conjugation rush</span></button>
+      <button class="btn sm" id="bScelta" style="flex:1;background:var(--blu);color:#fff">🎯 Scelta<br><span style="font-size:.64rem;font-weight:400">which tense?</span></button>
     </div>
+    <button class="btn sm block" id="bBoost" style="margin-bottom:14px;background:var(--carta2)">⚡ Vocab boost · +5 high-frequency words → Ripasso</button>
     <div class="eyebrow b">LA SETTIMANA</div>
     <div class="card" style="padding:12px">${weekStrip()}</div>
     <div class="card" style="margin-top:14px;background:var(--carta2)">
@@ -650,10 +671,14 @@ function renderOggi(){
   $('#m4').onclick=()=>renderScrivi();
   $('#bDett').onclick=renderDettato;
   $('#bSpr').onclick=renderSprint;
+  $('#bScelta').onclick=renderScelta;
+  $('#bBoost').onclick=vocabBoost;
+  $('#gapRow').onclick=renderLacune;
+  $('#esameRow').onclick=renderEsame;
   $('#syncRow').onclick=()=>{ if(CREDS){ if(confirm('Sign out on this device? Your cloud progress stays safe.')) signOut(); } else renderLogin(); };
 }
 
-const PROMPTS = ['Descrivi la tua giornata in ospedale (vera o immaginaria).','Qual è il tuo cibo italiano preferito e perché?','Racconta un paziente (inventato!) che ti ha colpito.','Cosa farai questo weekend?','Descrivi Milano a un turista in tre frasi.','Perché hai scelto medicina?','Racconta l\'ultima cosa che ti ha fatto ridere.'];
+const PROMPTS = ['Descrivi la tua giornata tipo, dall\'inizio alla fine.','Qual è il tuo cibo italiano preferito e perché?','Racconta una persona che ti ha colpito di recente.','Cosa farai questo weekend?','Descrivi la tua città a un turista in tre frasi.','Perché hai scelto di imparare l\'italiano?','Racconta l\'ultima cosa che ti ha fatto ridere.','Descrivi un problema burocratico che hai avuto in Italia (vero o inventato).','Se potessi cambiare una cosa della tua vita, cosa cambieresti? (usa il condizionale!)','Racconta com\'era la tua vita cinque anni fa. (usa l\'imperfetto!)'];
 
 /* ----- Weekly XP strip ----- */
 function weekStrip(){
@@ -769,7 +794,11 @@ function renderSprint(){
     function check(){
       const norm=s=>s.toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
       if(norm(inp.value)===norm(v[3])){ hits++; $('#sFb').innerHTML='<span style="color:var(--verde)">✓ '+esc(v[3])+'</span>'; }
-      else{ $('#sFb').innerHTML='<span style="color:var(--rosso)">✗ → '+esc(v[3])+'</span>'; }
+      else{
+        $('#sFb').innerHTML='<span style="color:var(--rosso)">✗ → '+esc(v[3])+'</span>';
+        const t = /congiuntivo/.test(v[2]) ? 'congiuntivo_forma' : /prossimo|trapassato/.test(v[2]) ? 'ausiliare' : 'coniugazione';
+        logErr(t, (inp.value||'(blank)')+' ('+v[0]+' '+v[1]+', '+v[2]+')', v[3], 'sprint');
+      }
       i++; setTimeout(()=>{ if(t>0) ui(); },550);
     }
     $('#sGo').onclick=check;
@@ -799,8 +828,12 @@ function renderScrivi(){
     const txt=$('#scriviTa').value.trim();
     if(txt.length<10){toast('Write a bit more first ✍️');return;}
     $('#scriviGo').innerHTML='<span class="spinner"></span>'; $('#scriviGo').disabled=true;
-    const fb = await ai([{role:'user',content:`Student level: ${S.level}. Prompt: "${p}". Their Italian text: """${txt}"""\nGive feedback in this exact compact format (plain text, no markdown headers):\n✅ CORRECTED VERSION: (their text, fixed, natural)\n🔧 TOP 2 FIXES: (bullet each: error → fix → 5-word why)\n⭐ ONE UPGRADE: (a more native way to say one of their phrases)\nKeep it under 120 words total.`}],'You are an encouraging Italian teacher. Be concise, specific, never condescending.');
-    $('#scriviFb').innerHTML=`<div class="feedback-box">${esc(fb)}</div>`;
+    const fb = await ai([{role:'user',content:`Student level: ${S.level}. Prompt: "${p}". Their Italian text: """${txt}"""
+Respond ONLY with JSON:
+{"corrected":"their text, fixed, natural","fixes":["error → fix → 5-word why" x2 max],"upgrade":"a more native way to say one of their phrases","errs":[{"t":"one of: ${ERR_TAX_KEYS}","w":"their wrong phrase","r":"corrected phrase"} for each REAL error, empty if none]}`}],'You are an encouraging Italian teacher. Concise, specific, never condescending. JSON only.',true);
+    if(!fb||!fb.corrected){ $('#scriviFb').innerHTML='<div class="feedback-box">⚠ Hiccup — tap again.</div>'; $('#scriviGo').disabled=false; $('#scriviGo').textContent='Correct me →'; return; }
+    logErrs(fb.errs,'scrivi');
+    $('#scriviFb').innerHTML=`<div class="feedback-box">✅ <b>Versione corretta:</b>\n${esc(fb.corrected)}\n\n${(fb.fixes||[]).map(f=>'🔧 '+esc(f)).join('\n')}${fb.upgrade?'\n\n⭐ '+esc(fb.upgrade):''}${(fb.errs||[]).length?'\n\n🗺 '+fb.errs.length+' error'+(fb.errs.length>1?'s':'')+' tagged in your gap map':''}</div>`;
     S.missions.scrivi=true; touchStreak(); gainXP(25); save();
     $('#scriviGo').textContent='✓ Done — +25 XP'; 
   };
@@ -843,7 +876,7 @@ function renderLinea(){
 /* ----- Micro-lesson: concept → mnemonic → 5 drills → speak ----- */
 async function openLesson(unit, lv){
   showSheet(`<div class="eyebrow r">${lv} · ${esc(unit.t)}</div>`,`<div style="text-align:center;padding:40px 0"><span class="spinner"></span><p class="muted" style="margin-top:10px">Building your lesson…</p></div>`);
-  const lesson = await ai([{role:'user',content:`Create a 5-minute Italian micro-lesson. Level: ${lv}. Topic: "${unit.t}" (${unit.d}). Learner: a medical student with ADHD who loves mnemonics.
+  const lesson = await ai([{role:'user',content:`Create a 5-minute Italian micro-lesson. Level: ${lv}. Topic: "${unit.t}" (${unit.d}). Learner interests: ${S.interests.join(', ')||'everyday life in Italy'}. They love mnemonics and need tiny, punchy sessions.
 Respond ONLY with JSON:
 {"concept":{"title":"...","bullets":["3-4 punchy bullets explaining the core rule/idea","..."],"examples":[{"it":"Italian example","en":"translation"},{"it":"...","en":"..."}]},
 "mnemonic":"one vivid memory hook for the trickiest part of this topic",
@@ -925,7 +958,7 @@ async function openCheckpoint(unit,lv){
     <button class="btn primary block" id="startEx">Begin esame →</button>`);
   $('#startEx').onclick=async()=>{
     sheetBody(`<div style="text-align:center;padding:40px 0"><span class="spinner"></span><p class="muted" style="margin-top:8px">The examiner is preparing…</p></div>`);
-    const qs = await ai([{role:'user',content:`Generate 3 oral exam questions for CEFR ${lv} Italian (themes from this level: ${CURRICULUM[lv].map(u=>u.t).join(', ')}). Learner is a medical student — make 1 question medically themed if level is A2+. Respond ONLY with JSON: {"questions":["q1 in Italian","q2","q3"]}`}],'JSON only.',true);
+    const qs = await ai([{role:'user',content:`Generate 3 oral exam questions for CEFR ${lv} Italian (themes from this level: ${CURRICULUM[lv].map(u=>u.t).join(', ')}). Make 1 question themed on the learner's interests (${S.interests.join(', ')||'everyday life'}) if level is A2+. Respond ONLY with JSON: {"questions":["q1 in Italian","q2","q3"]}`}],'JSON only.',true);
     if(!qs||!qs.questions){ sheetBody('<div class="card">⚠ Connection issue — reopen the checkpoint.</div>'); return; }
     let qi=0; const answers=[];
     function ask(){
@@ -987,6 +1020,8 @@ const SCENARIOS = [
  {id:'girovisite',em:'🏨',t:'Giro visite — scegli il reparto',d:'Ward round in ANY department: present & get pimped by the strutturato',min:'B1',med:true},
  {id:'congresso',em:'🎤',t:'Al congresso (ESMO-style)',d:'Coffee-break networking + defend a poster in Italian',min:'B2',med:true},
  {id:'litigio',em:'😤',t:'La discussione',d:'Politely disagree about something — hold your ground',min:'B2'},
+ {id:'questura',em:'🛂',t:'In questura / all\'anagrafe',d:'Permesso, residenza, documents — survive Italian bureaucracy',min:'B1'},
+ {id:'telefonata',em:'📞',t:'La telefonata formale',d:'Call the comune / utility / Agenzia delle Entrate about a problem',min:'B2'},
  {id:'colloquio',em:'💼',t:'Il colloquio',d:'Job/specialty interview — formal register',min:'C1'},
  {id:'libero',em:'🎲',t:'Parliamo e basta',d:'Free conversation about your interests',min:'A1'}
 ];
@@ -1048,9 +1083,9 @@ function renderParla(){
 }
 
 function convoSystem(s){
-  return `You are an Italian conversation partner inside a language app. Scenario: "${s.t}" — ${s.d}. Learner level: ${S.level}. Learner interests: ${S.interests.join(', ')}. ${s.id==='paziente'?'You play a PATIENT with a realistic presenting complaint (pick one: chest pain, persistent cough, abdominal pain, headache). Reveal details only when asked correctly, like a real anamnesi. The learner is the doctor.':''} ${s.id==='collega'?'You are a friendly specializzanda in oncologia discussing a realistic case.':''} ${s.id==='girovisite'?`You are the strutturato (attending) on morning rounds in the reparto di ${s.ward||'Medicina Interna'}. Invent ONE realistic inpatient typical of this ward (inspiration: ${s.seeds||'a common admission'}) — give name, age, day of admission. Open by asking the learner (the student on rotation) to present the patient or answer a focused question. Probe their clinical reasoning with short pimping questions appropriate to the ward, gently correct clinical Italian terminology, and reveal new findings (labs, imaging, overnight events) as the round progresses.`:''} ${s.id==='congresso'?'You are an Italian oncologist at a medical congress coffee break. Chat about research, ask about their poster and research interests, use realistic academic small talk.':''}
+  return `You are an Italian conversation partner inside a language app. Scenario: "${s.t}" — ${s.d}. Learner level: ${S.level}. Learner interests: ${S.interests.join(', ')}. ${s.id==='paziente'?'You play a PATIENT with a realistic presenting complaint (pick one: chest pain, persistent cough, abdominal pain, headache). Reveal details only when asked correctly, like a real anamnesi. The learner is the doctor.':''} ${s.id==='collega'?'You are a friendly specializzanda in oncologia discussing a realistic case.':''} ${s.id==='girovisite'?`You are the strutturato (attending) on morning rounds in the reparto di ${s.ward||'Medicina Interna'}. Invent ONE realistic inpatient typical of this ward (inspiration: ${s.seeds||'a common admission'}) — give name, age, day of admission. Open by asking the learner (the student on rotation) to present the patient or answer a focused question. Probe their clinical reasoning with short pimping questions appropriate to the ward, gently correct clinical Italian terminology, and reveal new findings (labs, imaging, overnight events) as the round progresses.`:''} ${s.id==='congresso'?'You are an Italian oncologist at a medical congress coffee break. Chat about research, ask about their poster and research interests, use realistic academic small talk.':''} ${s.id==='questura'?'You are an impiegato at the questura/anagrafe counter. The learner needs to sort out a realistic document issue (permesso renewal, cambio di residenza, carta d\'identità). Be realistically brisk and bureaucratic: ask for documents, mention marca da bollo, moduli, appuntamenti — use authentic sportello language (Lei form). If they use tu or informal register, gently model the formal version in your fix.':''} ${s.id==='telefonata'?'You are a call-center operator for an Italian public office or utility (pick one: comune, Agenzia delle Entrate, energy provider). The learner is calling about a realistic problem (wrong bill, missing document, appointment). Use formal phone Italian: "Mi dica", "Resti in linea", "Le passo l\'ufficio competente". Make them navigate hold-music bureaucracy realistically but resolvably.':''}
 RULES: Reply in Italian calibrated slightly above ${S.level} (i+1). Keep replies SHORT (1-3 sentences) and always end with something that invites a response. Stay in character.
-After your Italian reply, respond ONLY with JSON: {"reply":"your in-character Italian","translation":"English translation","fix":"if the learner's last message had an error: the corrected phrase + 6-word explanation; else empty string"}`;
+After your Italian reply, respond ONLY with JSON: {"reply":"your in-character Italian","translation":"English translation","fix":"if the learner's last message had an error: the corrected phrase + 6-word explanation; else empty string","errs":[{"t":"error taxonomy key — one of: ${ERR_TAX_KEYS}","w":"the learner's wrong phrase verbatim","r":"the corrected phrase"} — one entry per REAL error in their last message, empty array if none or if they haven't spoken yet]}`;
 }
 
 async function startConvo(s){
@@ -1136,6 +1171,7 @@ async function userTurn(text){
   // attach fix to user's bubble
   if(res&&res.fix){ const myBubs=[...document.querySelectorAll('.bub.me')]; const mine=myBubs[myBubs.length-1];
     if(mine) mine.innerHTML+=`<span class="fix">🔧 ${esc(res.fix)}</span>`; }
+  if(res&&res.errs) logErrs(res.errs,'parla');
   replaceLastAI(res);
   if(myTurns===5){ S.missions.parla=true; touchStreak(); gainXP(40); save(); toast('Missione completata: 5 turns spoken! +40 XP 🎙'); }
 }
@@ -1261,8 +1297,10 @@ function renderSRS(){
   if(!due.length){
     main.innerHTML=`<div class="fadein" style="text-align:center;padding-top:50px">
       <div style="font-size:3.4rem">🏖</div><h1>Tutto fatto.</h1>
-      <p class="muted">No cards due. ${S.deck.length} cards in your deck — next reviews are scheduled. Go speak something instead.</p>
-      <button class="btn primary" style="margin-top:14px" id="goParla">🎙 To the booth →</button></div>`;
+      <p class="muted">No cards due. ${S.deck.length} cards in your deck — next reviews are scheduled.</p>
+      <button class="btn yellow" style="margin-top:14px" id="vBoost">⚡ Vocab boost — add 5 high-frequency words</button><br>
+      <button class="btn primary" style="margin-top:10px" id="goParla">🎙 Or go speak →</button></div>`;
+    $('#vBoost').onclick=vocabBoost;
     $('#goParla').onclick=()=>setTab('parla');
     if(!S.missions.srs){ S.missions.srs=true; save(); }
     return;
@@ -1273,23 +1311,37 @@ function renderSRS(){
       main.innerHTML=`<div class="fadein" style="text-align:center;padding-top:50px"><div style="font-size:3.4rem">⚡</div><h1>Queue cleared!</h1><p class="muted">+20 XP. Your brain just did its push-ups.</p><button class="btn green" style="margin-top:14px" id="bk">Back to Oggi →</button></div>`;
       $('#bk').onclick=()=>setTab('oggi'); return; }
     const c=due[i];
+    const isFix = c.kind==='fix';
+    const production = !isFix && (c.ivl||0)>=7; // mature cards flip direction: EN → produce the Italian
+    const leech = (c.lapses||0)>=4;
     main.innerHTML=`
     <div class="fadein">
       <div class="eyebrow r">RIPASSO · ${i+1} / ${due.length}</div>
       <div class="progressbar" style="margin-bottom:14px"><div style="width:${i/due.length*100}%"></div></div>
+      ${leech?`<div class="card" style="background:var(--giallo);padding:10px 14px;margin-bottom:10px"><b>🪱 Leech alert</b> — this card keeps escaping. <button class="btn sm dark" id="reMn">Regenerate the mnemonic</button></div>`:''}
       <div class="srscard"><div class="srsinner" id="srsIn">
         <div class="srsface front">
+          ${isFix?`
+          <div class="eyebrow">🔧 FIX THE SENTENCE</div>
+          <div style="font-size:1.05rem;font-weight:600;text-decoration:line-through;opacity:.75">${esc(c.en)}</div>
+          <div class="muted" style="font-size:.74rem">${esc(c.ex)}</div>`
+          :production?`
+          <div class="eyebrow">SAY IT IN ITALIAN</div>
+          <div class="word" style="font-size:1.25rem">${esc(c.en)}</div>
+          <input class="ti" id="prodIn" placeholder="type it (optional)…" autocapitalize="off" style="max-width:90%;text-align:center">`
+          :`
           <div class="eyebrow">WHAT DOES IT MEAN?</div>
           <div class="word">${esc(c.it)}</div>
-          <button class="btn sm yellow" id="sayIt">🔊 hear it</button>
+          <button class="btn sm yellow" id="sayIt">🔊 hear it</button>`}
           <button class="btn dark" id="flipB" style="margin-top:8px">Flip →</button>
         </div>
         <div class="srsface back">
           <div class="word">${esc(c.it)}</div>
-          <div style="font-size:1.05rem;font-weight:600">${esc(c.en)}</div>
+          ${isFix?'':`<div style="font-size:1.05rem;font-weight:600">${esc(c.en)}</div>`}
+          <div id="prodFb"></div>
           ${c.mn?`<div style="background:var(--giallo);color:var(--ink);border-radius:10px;padding:8px 12px;font-size:.82rem">🧠 ${esc(c.mn)}</div>`:''}
-          ${c.ex?`<div style="font-size:.8rem;opacity:.8;font-style:italic">"${esc(c.ex)}"</div>`:''}
-          ${!c.mn?`<button class="btn sm yellow" id="genMn">🧠 Make me a mnemonic</button>`:''}
+          ${c.ex&&!isFix?`<div style="font-size:.8rem;opacity:.8;font-style:italic">"${esc(c.ex)}"</div>`:''}
+          ${!c.mn&&!isFix?`<button class="btn sm yellow" id="genMn">🧠 Make me a mnemonic</button>`:''}
         </div>
       </div></div>
       <div class="gradebtns" id="grades" style="visibility:hidden">
@@ -1299,8 +1351,20 @@ function renderSRS(){
         <button class="btn" data-g="3" style="background:var(--verde);color:#fff">Easy<br><span style="font-size:.62rem">${fmtIvl(nextIvl(c,3))}</span></button>
       </div>
     </div>`;
-    $('#sayIt').onclick=()=>speak(c.it);
-    $('#flipB').onclick=()=>{ $('#srsIn').classList.add('flip'); $('#grades').style.visibility='visible'; speak(c.it); };
+    const say=$('#sayIt'); if(say) say.onclick=()=>speak(c.it);
+    $('#flipB').onclick=()=>{
+      const pi=$('#prodIn');
+      if(pi && pi.value.trim()){
+        const n=s=>s.toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z' ]/g,'');
+        const ok = n(pi.value)===n(c.it) || similar(pi.value,c.it);
+        $('#prodFb').innerHTML=`<div style="font-size:.85rem;font-weight:700;color:${ok?'#8ee6b8':'#ff9e9a'}">${ok?'✓ your production was right':'✗ you typed: '+esc(pi.value)}</div>`;
+      }
+      $('#srsIn').classList.add('flip'); $('#grades').style.visibility='visible'; speak(c.it);
+    };
+    const pi=$('#prodIn'); if(pi){ pi.focus(); pi.addEventListener('keydown',e=>{if(e.key==='Enter')$('#flipB').click();}); }
+    const rm=$('#reMn'); if(rm) rm.onclick=async()=>{ rm.innerHTML='<span class="spinner"></span>';
+      const m=await ai([{role:'user',content:`The learner keeps forgetting the Italian ${isFix?'grammar fix':'word'} "${c.it}" (${c.en}). Their old mnemonic failed: "${c.mn||'(none)'}". Create a COMPLETELY different, vivid, slightly absurd English mnemonic (max 18 words). Mnemonic only.`}],'Mnemonic genius. Output the sentence only.');
+      if(m){ c.mn=m.trim(); c.lapses=1; save(); show(); } };
     const gm=$('#genMn'); if(gm) gm.onclick=async()=>{ gm.innerHTML='<span class="spinner"></span>';
       const m=await ai([{role:'user',content:`Create one vivid, slightly absurd English mnemonic (max 18 words) for the Italian word "${c.it}" meaning "${c.en}". Respond with the mnemonic only.`}],'Mnemonic genius. Output the mnemonic sentence only.');
       c.mn=m.trim(); save(); show(); setTimeout(()=>{$('#srsIn').classList.add('flip');$('#grades').style.visibility='visible';},50); };
@@ -1316,8 +1380,8 @@ function nextIvl(c,g){ // simplified SM-2
 }
 function fmtIvl(d){ return d===0?'<1m':d<30?d+'d':Math.round(d/30)+'mo'; }
 function gradeCard(c,g){
-  if(g===0){ c.ivl=0; c.due=Date.now()+60000; c.ease=Math.max(1.3,c.ease-0.2); }
-  else{ const ni=nextIvl(c,g); c.ease=Math.max(1.3,c.ease+(g===1?-0.15:g===3?0.15:0)); c.ivl=ni; c.due=Date.now()+ni*86400000; }
+  if(g===0){ c.ivl=0; c.due=Date.now()+60000; c.ease=Math.max(1.3,c.ease-0.2); c.lapses=(c.lapses||0)+1; }
+  else{ const ni=nextIvl(c,g); c.ease=Math.max(1.3,c.ease+(g===1?-0.15:g===3?0.15:0)); c.ivl=ni; c.due=Date.now()+ni*86400000; if(g>=2) c.lapses=Math.max(0,(c.lapses||0)-1); }
   save();
 }
 
@@ -1540,12 +1604,454 @@ async function triggerDrill(){
     document.querySelectorAll('.sheet .qopt').forEach(b=>b.onclick=()=>{
       const k=+b.dataset.k;
       document.querySelectorAll('.sheet .qopt').forEach(x=>x.disabled=true);
-      if(k===it.answer){b.classList.add('right');correct++;} else {b.classList.add('wrong');document.querySelectorAll('.sheet .qopt')[it.answer].classList.add('right');}
+      if(k===it.answer){b.classList.add('right');correct++;} else {b.classList.add('wrong');document.querySelectorAll('.sheet .qopt')[it.answer].classList.add('right');
+        logErr('congiuntivo_quando', it.sentence.replace('___',it.options[k]), it.sentence.replace('___',it.options[it.answer]), 'trigger');}
       $('#dFb').innerHTML=`<div class="mnemo" style="margin-top:10px"><b>${k===it.answer?'✓':'✗'} </b>${esc(it.why)}</div><button class="btn dark block" id="dN">${i<set.items.length-1?'Next →':'See score →'}</button>`;
       $('#dN').onclick=()=>{i++;show();};
     });
   }
   show();
+}
+
+/* =========================================================
+   LACUNE — the gap engine. Every AI correction, sprint miss,
+   and drill mistake is tagged, counted, and turned into
+   targeted repair drills + auto-generated SRS fix-cards.
+========================================================= */
+const ERR_TAX = {
+ tempo_passati:['Passato prossimo vs imperfetto','Background/habit/state → imperfetto · completed event → passato prossimo'],
+ congiuntivo_quando:['When the congiuntivo triggers','VEDONO + che → congiuntivo · facts (so che, è vero che) stay indicativo'],
+ congiuntivo_forma:['Congiuntivo forms','sia / abbia / faccia — io·tu·lui are identical, add the pronoun'],
+ condizionale:['Conditional & hypotheticals','se + congiuntivo imperfetto → condizionale · politeness → vorrei'],
+ futuro:['Future tense','Predictions & guesses → futuro · everyday near-future → presente is fine'],
+ ausiliare:['essere vs avere + agreement','Motion/change/reflexive → essere, and the participle agrees'],
+ coniugazione:['Conjugation slips','Wrong ending or stem — drill it in the Sprint'],
+ concordanza:['Gender & number agreement','Article · noun · adjective must all match'],
+ preposizioni:['Prepositions','a / in / da / di / per — learn the collocation, not the logic'],
+ articoli:['Articles','il / lo / la / i / gli / le — and when Italian drops them'],
+ pronomi:['Pronouns & clitics','mi / ti / ci / ne — placement, doubling, participle agreement with lo/la'],
+ ordine_parole:['Word order','Adjective position, negation, question shape'],
+ vocab:['Word choice','False friends and unnatural picks'],
+ ortografia:['Spelling & accents','è vs e · perché · double consonants'],
+ registro:['Register & formality','Lei vs tu, formal connectors, PEC-speak']
+};
+const ERR_TAX_KEYS = Object.keys(ERR_TAX).join(', ');
+
+function logErr(type, wrong, right, src){
+  if(!ERR_TAX[type]) return;
+  const e = S.errLog[type] || (S.errLog[type]={n:0,last:0,ex:[]});
+  e.n++; e.last=Date.now();
+  if(wrong && right){
+    e.ex.unshift({w:String(wrong).slice(0,140), r:String(right).slice(0,140), s:src||''});
+    e.ex = e.ex.slice(0,4);
+  }
+  // every 3rd hit on the same weakness → an SRS fix-card built from YOUR OWN error
+  if(e.n%3===0 && e.ex[0]){
+    const id='fix-'+type+'-'+e.n;
+    if(!S.deck.find(c=>c.id===id)){
+      S.deck.push({id, kind:'fix', t:type, it:e.ex[0].r, en:e.ex[0].w, mn:ERR_TAX[type][1], ex:ERR_TAX[type][0], due:Date.now(), ivl:0, ease:2.3, lapses:0});
+      toast('New fix-card in Ripasso: '+ERR_TAX[type][0]+' 🔧');
+    }
+  }
+  save();
+}
+function logErrs(arr, src){ (arr||[]).forEach(x=>{ if(x&&x.t) logErr(x.t, x.w, x.r, src); }); }
+function topGaps(n){
+  return Object.entries(S.errLog).map(([t,e])=>({t,n:e.n,last:e.last,ex:e.ex}))
+    .filter(g=>g.n>0).sort((a,b)=>b.n-a.n).slice(0,n||5);
+}
+
+function renderLacune(){
+  const gaps=topGaps(8);
+  showSheet('<div class="eyebrow r">LE TUE LACUNE · YOUR GAP MAP</div>', !gaps.length
+   ? `<div class="card"><h2>No data yet.</h2><p class="muted">Speak in the booth, write in Scrivi, run a Sprint or a Scelta round — every mistake gets tagged and lands here. Then we repair them, one by one.</p></div>`
+   : `<p class="muted" style="margin-bottom:10px">Tagged from your booth turns, writing, sprints and drills. <b>Ripara</b> builds a drill from <i>your own</i> failed sentences — clear it and the counter drops.</p>
+   ${gaps.map(g=>{
+     const max=gaps[0].n;
+     return `<div class="card flat" style="margin-bottom:8px">
+       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+         <b style="font-size:.92rem">${esc(ERR_TAX[g.t][0])}</b>
+         <span class="pill" style="background:var(--rosso);color:#fff">×${g.n}</span>
+       </div>
+       <div style="height:8px;background:var(--carta2);border:1.5px solid var(--ink);border-radius:6px;margin:6px 0;overflow:hidden"><div style="height:100%;width:${Math.round(g.n/max*100)}%;background:var(--rosso)"></div></div>
+       <div class="muted" style="font-size:.76rem">${esc(ERR_TAX[g.t][1])}</div>
+       ${g.ex[0]?`<div style="font-size:.78rem;margin-top:6px;background:#fff;border:1.5px solid var(--ink);border-radius:8px;padding:6px 9px">✗ <s style="opacity:.65">${esc(g.ex[0].w)}</s><br>✓ <b>${esc(g.ex[0].r)}</b></div>`:''}
+       <button class="btn sm dark block" data-fix="${g.t}" style="margin-top:8px">🔧 Ripara →</button>
+     </div>`;
+   }).join('')}`);
+  document.querySelectorAll('[data-fix]').forEach(b=>b.onclick=()=>repairDrill(b.dataset.fix));
+}
+
+async function repairDrill(type){
+  const g=S.errLog[type]||{ex:[]};
+  sheetBody('<div style="text-align:center;padding:40px 0"><span class="spinner"></span><p class="muted" style="margin-top:8px">Building a repair drill from your own mistakes…</p></div>');
+  const set = await ai([{role:'user',content:`A ${S.level} Italian learner keeps making this error type: "${ERR_TAX[type][0]}" (rule: ${ERR_TAX[type][1]}). Their actual recent mistakes: ${JSON.stringify(g.ex||[])}.
+Generate 5 two-option fill-in items that drill EXACTLY this weakness. Where possible, base items on their own failed sentences (fixed and varied). Respond ONLY with JSON:
+{"items":[{"s":"sentence with ___","o":["option A","option B"],"a":0,"w":"max 12-word why naming the rule"}]}`}],'Italian remedial drill writer. JSON only.',true,2000);
+  if(!set||!set.items){ sheetBody('<div class="card">⚠ Couldn\'t build — reopen and retry.</div>'); return; }
+  let i=0, correct=0;
+  function show(){
+    if(i>=set.items.length){
+      const healed = correct>=4;
+      if(healed && S.errLog[type]){ S.errLog[type].n=Math.max(0,S.errLog[type].n-3); }
+      gainXP(15); touchStreak(); save();
+      sheetBody(`<div style="text-align:center;padding:20px 0"><div style="font-size:3rem">${healed?'🩹':'📚'}</div><h1>${correct}/${set.items.length}</h1><p class="muted">${healed?'Gap patched — counter reduced. It\'ll fully heal with repetition.':'Not yet — reread the rule and run it again tomorrow.'} +15 XP</p><button class="btn primary block" id="rDone" style="margin-top:14px">Back to gap map →</button></div>`);
+      $('#rDone').onclick=renderLacune; return;
+    }
+    const it=set.items[i];
+    sheetBody(`
+      <div class="eyebrow b">RIPARA · ${esc(ERR_TAX[type][0]).toUpperCase()} · ${i+1}/${set.items.length}</div>
+      <div class="card"><h2 style="font-size:1.1rem">${esc(it.s)}</h2></div>
+      ${it.o.map((o,k)=>`<button class="qopt" data-k="${k}">${esc(o)}</button>`).join('')}
+      <div id="rFb"></div>`);
+    document.querySelectorAll('.sheet .qopt').forEach(b=>b.onclick=()=>{
+      const k=+b.dataset.k;
+      document.querySelectorAll('.sheet .qopt').forEach(x=>x.disabled=true);
+      if(k===it.a){b.classList.add('right');correct++;} else {b.classList.add('wrong');document.querySelectorAll('.sheet .qopt')[it.a].classList.add('right');}
+      $('#rFb').innerHTML=`<div class="mnemo" style="margin-top:10px"><b>${k===it.a?'✓':'✗'} </b>${esc(it.w)}</div><button class="btn dark block" id="rN">${i<set.items.length-1?'Next →':'Result →'}</button>`;
+      $('#rN').onclick=()=>{i++;show();};
+    });
+  }
+  show();
+}
+
+/* =========================================================
+   FREQUENCY VOCAB — top-frequency lemmas beyond the basics.
+   "Vocab boost" feeds 5/day into the SRS: maximum-yield words.
+   [italian, english, minLevelIdx]
+========================================================= */
+const FREQ_VOCAB = [
+ ['quindi','so / therefore',0],['però','but / however',0],['ancora','still / again / yet',0],['già','already',0],
+ ['sempre','always',0],['spesso','often',0],['subito','right away',0],['insieme','together',0],
+ ['prima','before / first',0],['dopo','after',0],['forse','maybe',0],['proprio','really / exactly',0],
+ ['qualcosa','something',0],['qualcuno','someone',0],['niente','nothing',0],['ognuno','each one',1],
+ ['abbastanza','enough / quite',1],['piuttosto','rather',1],['almeno','at least',1],['appena','as soon as / just',1],
+ ['infatti','indeed / in fact',1],['invece','instead / whereas',1],['inoltre','moreover',1],['comunque','anyway / however',1],
+ ['purtroppo','unfortunately',1],['davvero','really / truly',1],['soprattutto','above all',1],['nemmeno','not even',1],
+ ['riuscire a','to manage to',1],['smettere di','to stop (doing)',1],['provare a','to try to',1],['accorgersi di','to notice / realize',2],
+ ['sembrare','to seem',1],['succedere','to happen',1],['bastare','to be enough',1],['servire','to be needed / useful',1],
+ ['mancare','to be missing / to miss',1],['piacere','to please (mi piace)',0],['dispiacere','to be sorry',1],['convenire','to be worthwhile',2],
+ ['il motivo','the reason',1],['lo scopo','the purpose / aim',2],['il vantaggio','the advantage',2],['lo svantaggio','the disadvantage',2],
+ ['la scelta','the choice',1],['lo sviluppo','the development',2],['il comportamento','the behavior',2],['la conseguenza','the consequence',2],
+ ['aumentare','to increase',2],['diminuire','to decrease',2],['migliorare','to improve',2],['peggiorare','to worsen',2],
+ ['ottenere','to obtain',2],['raggiungere','to reach / achieve',2],['evitare','to avoid',2],['rischiare','to risk',2],
+ ['affrontare','to face / tackle',2],['risolvere','to solve',2],['dipendere da','to depend on',2],['trattarsi di','to be a matter of',3],
+ ['nonostante','despite (+cong.)',3],['a meno che','unless (+cong.)',3],['pur di','just to / in order to',3],['dato che','given that',2],
+ ['siccome','since / because',2],['perciò','therefore',2],['dunque','so / thus',2],['tuttavia','nevertheless',3],
+ ['pertanto','therefore (formal)',3],['affatto','at all (non... affatto)',2],['ormai','by now / at this point',2],['altrimenti','otherwise',2],
+ ['in realtà','actually',1],['al contrario','on the contrary',2],['d\'altronde','on the other hand',3],['a proposito','by the way',2],
+ ['in effetti','indeed / actually',2],['tra l\'altro','among other things',3],['man mano che','as (gradually)',3],['a patto che','provided that (+cong.)',3],
+ ['prendere in giro','to make fun of',2],['dare fastidio','to bother / annoy',2],['fare finta di','to pretend to',2],['valere la pena','to be worth it',2],
+ ['andare d\'accordo','to get along',1],['mettersi d\'accordo','to come to an agreement',2],['farcela','to make it / manage',2],['andarsene','to leave / go away',2],
+ ['la domanda','the application / question',1],['il modulo','the form (to fill)',1],['la scadenza','the deadline',2],['il rinnovo','the renewal',2],
+ ['il permesso di soggiorno','residence permit',1],['la residenza','registered residence',1],['l\'anagrafe','registry office',2],['la marca da bollo','revenue stamp',2],
+ ['la ricevuta','the receipt',1],['la bolletta','utility bill',1],['l\'affitto','the rent',1],['il contratto','the contract',1],
+ ['la raccomandata','registered letter',2],['il codice fiscale','tax code',1],['lo sportello','service counter',1],['prenotare','to book',0],
+ ['rivolgersi a','to turn to / contact',2],['compilare','to fill in',1],['allegare','to attach',2],['richiedere','to request / require',1],
+ ['presentare domanda','to submit an application',2],['essere in regola','to have papers in order',2],['il ritardo','the delay',1],['il disguido','mix-up / hitch (formal)',3],
+ ['sostenere','to claim / support',3],['affermare','to state',3],['ribadire','to reiterate',4],['sottolineare','to underline / stress',3],
+ ['coinvolgere','to involve',3],['comportare','to entail',3],['garantire','to guarantee',3],['prevedere','to foresee / provide for',3],
+ ['tutelare','to protect (rights)',4],['vigente','in force (law)',4],['ai sensi di','pursuant to',4],['salvo','except / unless',3],
+ ['qualora','in case (+cong., formal)',4],['affinché','so that (+cong.)',3],['pressoché','almost / nearly',4],['perlopiù','mostly',4],
+ ['a prescindere da','regardless of',4],['di conseguenza','as a result',3],['in merito a','regarding (formal)',4],['previa','subject to (formal)',5],
+ ['il presupposto','the premise / assumption',4],['il divario','the gap / divide',4],['l\'esito','the outcome',3],['il provvedimento','the measure / decree',4]
+];
+function vocabBoost(){
+  const avail = FREQ_VOCAB.map((v,i)=>({v,i}))
+    .filter(x=>x.v[2]<=S.levelIdx+1 && !S.freqSeen[x.i] && !S.deck.find(c=>c.id==='f'+x.i));
+  if(!avail.length){ toast('Frequency list cleared at your level — sali di livello! 🏔'); return; }
+  const take=avail.slice(0,5);
+  take.forEach(x=>{
+    S.freqSeen[x.i]=1;
+    S.deck.push({id:'f'+x.i, it:x.v[0], en:x.v[1], mn:'', ex:'', due:Date.now(), ivl:0, ease:2.5, lapses:0});
+  });
+  save(); toast('+'+take.length+' high-frequency words → Ripasso ⚡');
+  if(TAB==='oggi') renderOggi(); else if(TAB==='srs') renderSRS();
+}
+
+/* =========================================================
+   SCELTA — the tense-CHOICE drill. Not "how do I conjugate"
+   but "WHICH tense/mood does this context demand".
+   [sentence, [optA,optB], answerIdx, why, errType]
+========================================================= */
+const SCELTA_BANK = [
+ ['Mentre ___ la TV, è suonato il telefono.',['guardavo','ho guardato'],0,'Action in progress in the background → imperfetto','tempo_passati'],
+ ['Ieri sera ___ un film bellissimo.',['ho visto','vedevo'],0,'One-time completed event → passato prossimo','tempo_passati'],
+ ['Da bambino ___ sempre a pallone.',['giocavo','ho giocato'],0,'Past habit ("sempre") → imperfetto','tempo_passati'],
+ ['All\'improvviso ___ la porta.',['si è aperta','si apriva'],0,'Sudden event that happened → passato prossimo','tempo_passati'],
+ ['Quando è arrivata, noi ___ ancora.',['mangiavamo','abbiamo mangiato'],0,'Ongoing at that moment → imperfetto','tempo_passati'],
+ ['L\'anno scorso ___ in Sicilia due volte.',['siamo andati','andavamo'],0,'Counted occurrences (due volte) → passato prossimo','tempo_passati'],
+ ['Non è venuta perché ___ la febbre.',['aveva','ha avuto'],0,'State as background of the story → imperfetto','tempo_passati'],
+ ['Ieri ___ caldo tutto il giorno.',['ha fatto','faceva'],0,'Bounded duration (tutto il giorno) → passato prossimo','tempo_passati'],
+ ['Penso che Marco ___ ragione.',['abbia','ha'],0,'Opinion (penso che) → congiuntivo','congiuntivo_quando'],
+ ['So che Marco ___ ragione.',['ha','abbia'],0,'Certainty (so che) → indicativo','congiuntivo_quando'],
+ ['È possibile che domani ___.',['piova','piove'],0,'Possibility → congiuntivo','congiuntivo_quando'],
+ ['Sono sicura che il treno ___ in orario.',['è','sia'],0,'Certainty (sono sicura che) → indicativo','congiuntivo_quando'],
+ ['Benché ___ tardi, usciamo lo stesso.',['sia','è'],0,'Benché ALWAYS drags the congiuntivo','congiuntivo_quando'],
+ ['Bisogna che tu ___ subito.',['parta','parti'],0,'Impersonal necessity (bisogna che) → congiuntivo','congiuntivo_quando'],
+ ['Mi dispiace che non ___ venire.',['possiate','potete'],0,'Emotion (mi dispiace che) → congiuntivo','congiuntivo_quando'],
+ ['Secondo me ___ una buona idea.',['è','sia'],0,'"Secondo me" has no che → indicativo. Classic trap!','congiuntivo_quando'],
+ ['Quando ___ grande, farò l\'architetto.',['sarò','sono'],0,'Quando + future event → futuro (double future)','futuro'],
+ ['Che ore sono? ___ le tre.',['Saranno','Sono'],0,'Futuro of guessing: "it must be about 3"','futuro'],
+ ['Appena ___, ti chiamo.',['arrivo','arriverò'],0,'Everyday near-future → natives use the presente','futuro'],
+ ['Se avessi tempo, ___ di più.',['leggerei','leggerò'],0,'Hypothetical (se + cong. imperfetto) → condizionale','condizionale'],
+ ['Se lo avessi saputo, ___ prima.',['sarei arrivata','arrivavo'],0,'Past hypothetical → condizionale passato (standard)','condizionale'],
+ ['___ un\'informazione, per favore.',['Vorrei','Voglio'],0,'Politeness → condizionale ("voglio" sounds rude)','condizionale'],
+ ['Maria ___ a casa presto.',['è tornata','ha tornato'],0,'Motion/change verb → essere, participle agrees','ausiliare'],
+ ['Noi ___ per due ore.',['abbiamo camminato','siamo camminati'],0,'Camminare takes avere despite being motion','ausiliare'],
+ ['Le ragazze ___ al cinema.',['sono andate','sono andati'],0,'With essere the participle agrees: ragazze → andate','ausiliare'],
+ ['La pizza? L\'ho ___ tutta.',['mangiata','mangiato'],0,'Direct pronoun la → participle agrees: mangiata','pronomi']
+];
+function renderScelta(){
+  const pool=[...SCELTA_BANK].sort(()=>Math.random()-0.5).slice(0,8);
+  let i=0, correct=0;
+  function ui(){
+    if(i>=pool.length){
+      gainXP(20); touchStreak(); save();
+      main.innerHTML=`<div class="fadein" style="text-align:center;padding-top:50px"><div style="font-size:3rem">${correct>=7?'🏆':correct>=5?'💪':'📚'}</div><h1>${correct}/${pool.length}</h1><p class="muted">+20 XP. Conjugating is mechanics — <b>choosing</b> the tense is fluency. Your misses were tagged in the gap map.</p><button class="btn primary" style="margin-top:14px" id="scDone">Back to Oggi →</button></div>`;
+      $('#scDone').onclick=()=>setTab('oggi'); return;
+    }
+    const it=pool[i];
+    main.innerHTML=`
+    <div class="fadein">
+      <button class="btn sm" id="scBack" style="margin-bottom:10px">← Oggi</button>
+      <div class="eyebrow r">SCELTA · WHICH TENSE? · ${i+1}/${pool.length}</div>
+      <div class="card"><h2 style="font-size:1.15rem">${esc(it[0])}</h2></div>
+      ${it[1].map((o,k)=>`<button class="qopt" data-k="${k}">${esc(o)}</button>`).join('')}
+      <div id="scFb"></div>
+    </div>`;
+    $('#scBack').onclick=()=>setTab('oggi');
+    document.querySelectorAll('.qopt').forEach(b=>b.onclick=()=>{
+      const k=+b.dataset.k;
+      document.querySelectorAll('.qopt').forEach(x=>x.disabled=true);
+      if(k===it[2]){ b.classList.add('right'); correct++; }
+      else{
+        b.classList.add('wrong'); document.querySelectorAll('.qopt')[it[2]].classList.add('right');
+        logErr(it[4], it[0].replace('___',it[1][k]), it[0].replace('___',it[1][it[2]]), 'scelta');
+      }
+      $('#scFb').innerHTML=`<div class="mnemo fadein" style="margin-top:10px"><b>${k===it[2]?'✓':'✗'} </b>${esc(it[3])}</div><button class="btn dark block" id="scN">${i<pool.length-1?'Next →':'Score →'}</button>`;
+      $('#scN').onclick=()=>{i++;ui();};
+    });
+  }
+  ui();
+}
+
+/* =========================================================
+   ESAME — CILS/CELI-style simulator. Scritta · Orale ·
+   Ascolto · Lettura, graded on the real rubric axes.
+========================================================= */
+const WRITING_TASKS = {
+ B1:['Scrivi un\'email a un amico italiano: racconta come ti trovi in Italia e invitalo a trovarti. (80-100 parole)',
+     'Hai un problema nell\'appartamento che affitti. Scrivi un messaggio al proprietario: descrivi il problema e chiedi una soluzione. (80-100 parole)',
+     'Racconta un viaggio che hai fatto: dove, con chi, cosa è successo di inaspettato. (80-100 parole)'],
+ B2:['Hai comprato un prodotto online arrivato difettoso. Scrivi un\'email di reclamo al servizio clienti: descrivi il problema e chiedi rimborso o sostituzione. Registro formale. (100-130 parole)',
+     'Scrivi al Comune per chiedere informazioni su un servizio (iscrizione anagrafica, tassa rifiuti, tessera biblioteca). Registro formale. (100-130 parole)',
+     '"Lo smart working migliora la vita dei lavoratori." Esprimi la tua opinione con argomenti a favore e contro. (120-150 parole)'],
+ C1:['Scrivi una PEC all\'Agenzia delle Entrate: hai ricevuto un avviso che ritieni errato e chiedi il riesame, citando i fatti. Registro formale-burocratico. (130-160 parole)',
+     'Scrivi un reclamo formale alla tua ASL o università per un disservizio, proponendo anche una soluzione. (130-160 parole)',
+     '"L\'intelligenza artificiale trasformerà il mercato del lavoro più di quanto la scuola riesca ad adattarsi." Saggio argomentativo. (150-180 parole)'],
+ C2:['Redigi un\'istanza formale a un ente pubblico (accesso agli atti, rettifica di dati, esenzione), con riferimenti impliciti alla normativa. (150-180 parole)',
+     'Scrivi un editoriale d\'opinione per un quotidiano su un tema d\'attualità italiano a tua scelta, con tesi, antitesi e conclusione. (170-200 parole)',
+     'Sintetizza per un collega, in registro professionale, i punti chiave e le criticità di un progetto immaginario che sta fallendo. (150-180 parole)']
+};
+function examBars(){
+  const last=S.examLog.slice(-6);
+  if(!last.length) return '';
+  return `<div class="card" style="padding:12px"><div class="eyebrow">I TUOI ULTIMI ESAMI</div>
+  <div style="display:flex;align-items:flex-end;gap:8px;height:64px;margin-top:6px">
+  ${last.map(e=>`<div style="flex:1;text-align:center">
+    <div style="font-family:var(--font-m);font-size:.6rem;font-weight:700">${e.tot}/20</div>
+    <div style="height:${Math.max(3,Math.round(e.tot/20*44))}px;background:${e.pass?'var(--verde)':'var(--rosso)'};border:1.5px solid var(--ink);border-radius:4px 4px 0 0"></div>
+    <div style="font-family:var(--font-m);font-size:.58rem;font-weight:700">${esc(e.lv)}·${esc(e.p[0].toUpperCase())}</div>
+  </div>`).join('')}</div></div>`;
+}
+let exLv=null;
+function renderEsame(){
+  exLv = exLv || (LEVELS.indexOf(S.level)>=2 ? S.level : 'B1');
+  if(['A1','A2'].includes(exLv)) exLv='B1';
+  main.innerHTML=`
+  <div class="fadein">
+    <button class="btn sm" id="exBack" style="margin-bottom:10px">← Oggi</button>
+    <div class="eyebrow r">ESAME · SIMULATORE CILS / CELI</div>
+    <h1 style="margin-bottom:6px">Exam conditions.<br>Zero surprises on the day.</h1>
+    <p class="muted" style="margin-bottom:12px">Timed tasks graded on the real rubric: <b>lessico · grammatica · coerenza · adeguatezza</b>. B1 is the citizenship requirement; B2-C1 is what universities and employers recognize. Every graded error feeds your gap map.</p>
+    <div class="row" style="margin-bottom:12px">
+      ${['B1','B2','C1','C2'].map(l=>`<button class="btn sm ${l===exLv?'dark':''}" data-lv="${l}" style="flex:1">${l}</button>`).join('')}
+    </div>
+    <button class="mission" id="pScritta"><span style="font-size:1.3rem">✍️</span><span><b>Prova scritta</b><br><span class="muted">12 min · formal task · rubric-graded</span></span><span class="st-go" style="margin-left:auto">VAI</span></button>
+    <button class="mission" id="pOrale"><span style="font-size:1.3rem">🎙</span><span><b>Prova orale</b><br><span class="muted">4 domande d'esame · speak or type</span></span><span class="st-go" style="margin-left:auto">VAI</span></button>
+    <button class="mission" id="pAscolto"><span style="font-size:1.3rem">👂</span><span><b>Prova d'ascolto</b><br><span class="muted">native-speed passage · 3 domande</span></span><span class="st-go" style="margin-left:auto">VAI</span></button>
+    <button class="mission" id="pLettura"><span style="font-size:1.3rem">📖</span><span><b>Prova di lettura</b><br><span class="muted">authentic text · 4 domande</span></span><span class="st-go" style="margin-left:auto">VAI</span></button>
+    ${examBars()}
+    <div class="card" style="background:var(--carta2);margin-top:10px">
+      <div class="eyebrow">COME FUNZIONA IL VOTO</div>
+      <p style="font-size:.84rem">Each axis is scored /5 (total /20, pass ≥ 12 — mirroring real CILS thresholds). The examiner also gives a CEFR verdict per attempt, so you can watch yourself cross the line before you book the real exam (~€100 a session — arrive sure).</p>
+    </div>
+  </div>`;
+  $('#exBack').onclick=()=>setTab('oggi');
+  document.querySelectorAll('[data-lv]').forEach(b=>b.onclick=()=>{exLv=b.dataset.lv;renderEsame();});
+  $('#pScritta').onclick=()=>esameScritta(exLv);
+  $('#pOrale').onclick=()=>esameOrale(exLv);
+  $('#pAscolto').onclick=()=>esameAscolto(exLv);
+  $('#pLettura').onclick=()=>esameLettura(exLv);
+}
+function rubricBox(res){
+  const axes=[['lessico','Lessico'],['grammatica','Grammatica'],['coerenza','Coerenza'],['adeguatezza','Adeguatezza']];
+  const tot=axes.reduce((s,a)=>s+(+res[a[0]]||0),0);
+  return {tot, html:`
+  <div style="text-align:center;padding:6px 0">
+    <div style="font-family:var(--font-d);font-size:3rem;color:${res.pass?'var(--verde)':'var(--rosso)'}">${res.pass?'PROMOSSA':'RIPROVA'}</div>
+    <div class="pill" style="display:inline-block">${tot}/20 · verdict: ${esc(res.cefr||'—')}</div>
+  </div>
+  ${axes.map(a=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
+    <div style="flex:1;font-family:var(--font-m);font-size:.72rem;font-weight:700">${a[1].toUpperCase()}</div>
+    <div style="flex:2;height:10px;background:var(--carta2);border:1.5px solid var(--ink);border-radius:6px;overflow:hidden"><div style="height:100%;width:${(+res[a[0]]||0)/5*100}%;background:var(--blu)"></div></div>
+    <b style="font-size:.8rem">${+res[a[0]]||0}/5</b></div>`).join('')}
+  <div class="feedback-box" style="margin-top:8px">${esc(res.feedback||'')}</div>`};
+}
+function saveExam(lv,p,tot,pass){ S.examLog.push({d:today(),lv,p,tot,pass}); S.examLog=S.examLog.slice(-30); gainXP(pass?60:25); touchStreak(); save(); }
+
+async function esameScritta(lv){
+  const tasks=WRITING_TASKS[lv]||WRITING_TASKS.B1;
+  const task=tasks[Math.floor(Math.random()*tasks.length)];
+  let t=12*60, timer=null;
+  main.innerHTML=`
+  <div class="fadein">
+    <button class="btn sm" id="wBack" style="margin-bottom:10px">← Esame</button>
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div class="eyebrow r">PROVA SCRITTA · ${lv}</div>
+      <span class="pill" id="wClock" style="background:var(--rosso);color:#fff">⏱ 12:00</span>
+    </div>
+    <div class="card" style="margin-top:8px"><h2 style="font-size:1.02rem">${esc(task)}</h2></div>
+    <textarea class="bigta" id="wTa" style="min-height:180px" placeholder="Scrivi qui — il timer è partito…" autocapitalize="sentences"></textarea>
+    <button class="btn primary block" id="wGo" style="margin-top:10px">Consegna →</button>
+    <div id="wFb"></div>
+  </div>`;
+  $('#wBack').onclick=()=>{clearInterval(timer);renderEsame();};
+  timer=setInterval(()=>{ t--; const c=$('#wClock');
+    if(c)c.textContent='⏱ '+Math.floor(t/60)+':'+String(t%60).padStart(2,'0');
+    if(t===60) toast('Un minuto! ⏱');
+    if(t<=0){ clearInterval(timer); $('#wGo')&&$('#wGo').click(); }
+  },1000);
+  $('#wGo').onclick=async()=>{
+    clearInterval(timer);
+    const txt=$('#wTa').value.trim();
+    if(txt.length<30){ toast('Troppo corto per essere valutato ✍️'); return; }
+    $('#wGo').innerHTML='<span class="spinner"></span>'; $('#wGo').disabled=true;
+    const res=await ai([{role:'user',content:`CILS/CELI ${lv} writing exam. Task: "${task}". Candidate's text: """${txt}"""
+Grade strictly at ${lv} standard. Respond ONLY with JSON:
+{"lessico":0-5,"grammatica":0-5,"coerenza":0-5,"adeguatezza":0-5,"pass":true|false (pass = total>=12 AND genuinely ${lv}-adequate),"cefr":"your honest CEFR verdict for this text","feedback":"3 short bullets with •: best thing, worst recurring problem, one register/structure upgrade","errs":[{"t":"one of: ${ERR_TAX_KEYS}","w":"their wrong phrase","r":"corrected phrase"} for up to 4 real errors found]}`}],'Rigorous but fair certified Italian exam grader. JSON only.',true,2000);
+    if(!res){ $('#wFb').innerHTML='<div class="card">⚠ Grading failed — riprova.</div>'; $('#wGo').disabled=false; $('#wGo').textContent='Consegna →'; return; }
+    logErrs(res.errs,'esame');
+    const R=rubricBox(res); saveExam(lv,'scritta',R.tot,!!res.pass);
+    $('#wFb').innerHTML=R.html+`<button class="btn dark block" id="wDone" style="margin-top:10px">Torna all'esame →</button>`;
+    $('#wGo').style.display='none';
+    $('#wDone').onclick=renderEsame;
+  };
+}
+
+async function esameOrale(lv){
+  main.innerHTML='<div class="fadein" style="text-align:center;padding-top:60px"><span class="spinner"></span><p class="muted" style="margin-top:10px">La commissione sta preparando le domande…</p></div>';
+  const qs=await ai([{role:'user',content:`Generate 4 CILS/CELI ${lv} oral exam questions in Italian: 1 personal, 1 opinion/argumentation, 1 hypothetical (forces conditional/subjunctive), 1 themed on: ${S.interests.join(', ')||'daily life in Italy'}. Respond ONLY with JSON {"questions":["...","...","...","..."]}`}],'JSON only.',true);
+  if(!qs||!qs.questions){ main.innerHTML='<div class="card">⚠ Connessione — riapri la prova.</div><button class="btn sm" onclick="renderEsame()">←</button>'; return; }
+  let qi=0; const answers=[];
+  function ask(){
+    if(qi>=qs.questions.length) return grade();
+    const q=qs.questions[qi];
+    main.innerHTML=`
+    <div class="fadein">
+      <button class="btn sm" id="oBack" style="margin-bottom:10px">← Esame</button>
+      <div class="eyebrow r">PROVA ORALE · ${lv} · DOMANDA ${qi+1}/4</div>
+      <div class="card"><h2>${esc(q)} <button class="spk" id="oSay" style="background:none;border:none;cursor:pointer">🔊</button></h2></div>
+      <button class="btn primary block" id="oSpeak">🎙 Rispondi a voce</button>
+      <p class="muted" style="text-align:center;margin:8px 0">oppure scrivi:</p>
+      <textarea class="bigta" id="oTa" style="min-height:90px"></textarea>
+      <button class="btn dark block" id="oNext" style="margin-top:8px">Prossima →</button>
+    </div>`;
+    $('#oBack').onclick=renderEsame;
+    $('#oSay').onclick=()=>speak(q);
+    speak(q);
+    $('#oSpeak').onclick=()=>{ $('#oSpeak').textContent='🔴 Ti ascolto…';
+      listen(h=>{$('#oTa').value=h;$('#oSpeak').textContent='🎙 Registra di nuovo';},null,()=>{$('#oSpeak').textContent='Mic non disponibile — scrivi';}); };
+    $('#oNext').onclick=()=>{ answers.push({q,a:$('#oTa').value.trim()||'(nessuna risposta)'}); qi++; ask(); };
+  }
+  async function grade(){
+    main.innerHTML='<div class="fadein" style="text-align:center;padding-top:60px"><span class="spinner"></span><p class="muted" style="margin-top:10px">La commissione delibera…</p></div>';
+    const res=await ai([{role:'user',content:`CILS/CELI ${lv} oral exam. Q&A: ${JSON.stringify(answers)}. Grade at strict ${lv} standard. Respond ONLY with JSON:
+{"lessico":0-5,"grammatica":0-5,"coerenza":0-5,"adeguatezza":0-5,"pass":true|false,"cefr":"honest CEFR verdict","feedback":"3 short bullets with •","errs":[{"t":"one of: ${ERR_TAX_KEYS}","w":"wrong phrase","r":"fix"} up to 4]}`}],'Rigorous but fair Italian oral examiner. Reward communication, penalize systematic grammar gaps. JSON only.',true,2000);
+    if(!res){ main.innerHTML='<div class="card">⚠ Valutazione fallita.</div>'; return; }
+    logErrs(res.errs,'esame');
+    const R=rubricBox(res); saveExam(lv,'orale',R.tot,!!res.pass);
+    main.innerHTML=`<div class="fadein">${R.html}<button class="btn dark block" id="oDone" style="margin-top:10px">Torna all'esame →</button></div>`;
+    $('#oDone').onclick=renderEsame;
+  }
+  ask();
+}
+
+async function esameAscolto(lv){
+  main.innerHTML='<div class="fadein" style="text-align:center;padding-top:60px"><span class="spinner"></span><p class="muted" style="margin-top:10px">Preparo il brano audio…</p></div>';
+  const set=await ai([{role:'user',content:`Create a CILS-style ${lv} listening comprehension: a natural spoken-Italian passage (60-90 words — announcement, voicemail, radio clip or dialogue snippet, realistic register) and 3 multiple-choice questions. Respond ONLY with JSON {"passage":"...","qs":[{"q":"...","o":["a","b","c","d"],"a":0}]}`}],'Italian exam author. JSON only.',true,2000);
+  if(!set||!set.passage){ main.innerHTML='<div class="card">⚠ Connessione — riapri.</div>'; return; }
+  let revealed=false, score=0, answered=0;
+  main.innerHTML=`
+  <div class="fadein">
+    <button class="btn sm" id="aBack" style="margin-bottom:10px">← Esame</button>
+    <div class="eyebrow r">PROVA D'ASCOLTO · ${lv}</div>
+    <div class="card" style="text-align:center">
+      <button class="btn primary" id="aPlay">🔊 Ascolta</button>
+      <button class="btn yellow" id="aSlow">🐢 Lento</button>
+      <p class="muted" style="margin-top:8px">In esame lo senti due volte. Qui: quante ne vuoi — ma allenati a due.</p>
+    </div>
+    ${set.qs.map((q,qi)=>`<div class="card flat" style="margin-bottom:8px"><b style="font-size:.92rem">${qi+1}. ${esc(q.q)}</b>
+      ${q.o.map((o,k)=>`<button class="qopt" data-q="${qi}" data-k="${k}" style="margin-top:6px">${esc(o)}</button>`).join('')}</div>`).join('')}
+    <div id="aFb"></div>
+  </div>`;
+  $('#aBack').onclick=renderEsame;
+  $('#aPlay').onclick=()=>speak(set.passage,1.0);
+  $('#aSlow').onclick=()=>speak(set.passage,0.72);
+  speak(set.passage,1.0);
+  document.querySelectorAll('.qopt').forEach(b=>b.onclick=()=>{
+    const qi=+b.dataset.q, k=+b.dataset.k, q=set.qs[qi];
+    document.querySelectorAll(`.qopt[data-q="${qi}"]`).forEach(x=>x.disabled=true);
+    if(k===q.a){ b.classList.add('right'); score++; } else { b.classList.add('wrong'); document.querySelectorAll(`.qopt[data-q="${qi}"]`)[q.a].classList.add('right'); }
+    answered++;
+    if(answered===set.qs.length && !revealed){
+      revealed=true;
+      const pass=score>=2, tot=Math.round(score/set.qs.length*20);
+      saveExam(lv,'ascolto',tot,pass);
+      $('#aFb').innerHTML=`<div class="feedback-box"><b>${score}/${set.qs.length} — ${pass?'promossa 🏆':'riascolta e riprova'}</b><br><br><b>Trascrizione:</b><br>${esc(set.passage)}</div><button class="btn dark block" id="aDone" style="margin-top:10px">Torna all'esame →</button>`;
+      $('#aDone').onclick=renderEsame;
+    }
+  });
+}
+
+async function esameLettura(lv){
+  main.innerHTML='<div class="fadein" style="text-align:center;padding-top:60px"><span class="spinner"></span><p class="muted" style="margin-top:10px">Preparo il testo…</p></div>';
+  const set=await ai([{role:'user',content:`Create a CILS-style ${lv} reading comprehension: an authentic-feeling Italian text (120-160 words — news brief, public notice, opinion excerpt or formal letter, appropriate register for ${lv}) and 4 multiple-choice questions testing global + detail + inference comprehension. Respond ONLY with JSON {"passage":"...","qs":[{"q":"...","o":["a","b","c","d"],"a":0}]}`}],'Italian exam author. JSON only.',true,2500);
+  if(!set||!set.passage){ main.innerHTML='<div class="card">⚠ Connessione — riapri.</div>'; return; }
+  let score=0, answered=0;
+  main.innerHTML=`
+  <div class="fadein">
+    <button class="btn sm" id="lBack" style="margin-bottom:10px">← Esame</button>
+    <div class="eyebrow r">PROVA DI LETTURA · ${lv}</div>
+    <div class="card" style="font-size:.92rem;line-height:1.55">${esc(set.passage)}</div>
+    ${set.qs.map((q,qi)=>`<div class="card flat" style="margin-bottom:8px"><b style="font-size:.92rem">${qi+1}. ${esc(q.q)}</b>
+      ${q.o.map((o,k)=>`<button class="qopt" data-q="${qi}" data-k="${k}" style="margin-top:6px">${esc(o)}</button>`).join('')}</div>`).join('')}
+    <div id="lFb"></div>
+  </div>`;
+  $('#lBack').onclick=renderEsame;
+  document.querySelectorAll('.qopt').forEach(b=>b.onclick=()=>{
+    const qi=+b.dataset.q, k=+b.dataset.k, q=set.qs[qi];
+    document.querySelectorAll(`.qopt[data-q="${qi}"]`).forEach(x=>x.disabled=true);
+    if(k===q.a){ b.classList.add('right'); score++; } else { b.classList.add('wrong'); document.querySelectorAll(`.qopt[data-q="${qi}"]`)[q.a].classList.add('right'); }
+    answered++;
+    if(answered===set.qs.length){
+      const pass=score>=3, tot=Math.round(score/set.qs.length*20);
+      saveExam(lv,'lettura',tot,pass);
+      $('#lFb').innerHTML=`<div class="feedback-box"><b>${score}/${set.qs.length} — ${pass?'promossa 🏆':'ci sei quasi'}</b></div><button class="btn dark block" id="lDone" style="margin-top:10px">Torna all'esame →</button>`;
+      $('#lDone').onclick=renderEsame;
+    }
+  });
 }
 
 /* =========================================================

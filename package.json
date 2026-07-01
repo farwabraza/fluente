@@ -1,6 +1,6 @@
 {
   "name": "fluente",
-  "version": "2.1.0",
+  "version": "3.0.0",
   "description": "ADHD-first Italian fluency app with AI lessons, speaking booth, and medical Italian",
   "main": "server.js",
   "scripts": {

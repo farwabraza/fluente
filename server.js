@@ -10,6 +10,8 @@ app.use(express.static(path.join(__dirname, "public")));
 
 // Tiny in-memory rate limit so a leaked URL can't drain your credits
 const hits = new Map();
+const daily = new Map(); // per-IP daily AI-call counter (optional cap for shared/sold deployments)
+let dailyKey = new Date().toISOString().slice(0, 10);
 function rateLimit(req, res, next) {
   const ip = req.headers["x-forwarded-for"] || req.ip || "x";
   const now = Date.now();
@@ -22,16 +24,30 @@ function rateLimit(req, res, next) {
   }
   next();
 }
+function dailyCap(req, res, next) {
+  const cap = parseInt(process.env.DAILY_AI_LIMIT) || 0; // 0 = off
+  if (!cap) return next();
+  const today = new Date().toISOString().slice(0, 10);
+  if (today !== dailyKey) { dailyKey = today; daily.clear(); }
+  const ip = req.headers["x-forwarded-for"] || req.ip || "x";
+  const n = (daily.get(ip) || 0) + 1;
+  daily.set(ip, n);
+  if (n > cap) {
+    return res.status(429).json({ error: { message: "Daily AI limit reached — come back tomorrow (or upgrade your plan)." } });
+  }
+  next();
+}
 
-app.post("/api/chat", rateLimit, async (req, res) => {
+app.post("/api/chat", rateLimit, dailyCap, async (req, res) => {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) {
     return res.status(500).json({ error: { message: "ANTHROPIC_API_KEY is not set. Add it in Replit → Tools → Secrets." } });
   }
-  const { messages, system } = req.body || {};
+  const { messages, system, max_tokens } = req.body || {};
   if (!Array.isArray(messages) || messages.length === 0) {
     return res.status(400).json({ error: { message: "messages array required" } });
   }
+  const mt = Math.min(Math.max(parseInt(max_tokens) || 1000, 1), 4000);
   try {
     const r = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -42,7 +58,7 @@ app.post("/api/chat", rateLimit, async (req, res) => {
       },
       body: JSON.stringify({
         model: process.env.CLAUDE_MODEL || "claude-sonnet-4-5",
-        max_tokens: 1000,
+        max_tokens: mt,
         system: system || "",
         messages,
       }),
