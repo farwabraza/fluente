@@ -155,6 +155,89 @@ setTimeout(() => {
     if (S.errLog.tempo_passati.n !== 3) throw new Error("n="+S.errLog.tempo_passati.n);
   });
 
+  T("Oggi shows coach, pronuncia, plateau rows", () => {
+    w.eval("renderOggi()");
+    ["coachGen","pronRow","platRow","bPacks"].forEach(id=>{ if(!w.document.querySelector("#"+id)) throw new Error(id+" missing"); });
+  });
+
+  T("coach snapshot reflects real state", () => {
+    const s = w.eval("JSON.stringify(coachSnapshot())");
+    const o = JSON.parse(s);
+    if (o.level !== S.level) throw new Error("level");
+    if (!Array.isArray(o.topGaps) || !o.topGaps.length) throw new Error("topGaps empty");
+    if (typeof o.cardsDue !== "number") throw new Error("cardsDue");
+  });
+
+  T("drawCoach renders cached plan with jump buttons", () => {
+    S.coachPlan = { d: w.eval("today()"), focus:"Attack passato vs imperfetto", steps:[
+      {t:"Repair drill",why:"top gap ×3",min:5,go:"lacune"},
+      {t:"Speak 5 turns",why:"output low",min:8,go:"parla"}]};
+    w.eval("renderOggi()");
+    if (w.document.querySelector("#coachGen")) throw new Error("gen button should hide when plan cached");
+    const jumps = w.document.querySelectorAll("#coachBox [data-go]");
+    if (jumps.length !== 2) throw new Error("jump buttons: "+jumps.length);
+    jumps[1].click();
+    if (!w.document.body.textContent.includes("Speaking is the whole game")) throw new Error("jump to parla failed");
+  });
+
+  T("booth system prompt has anti-script + naturalness fields", () => {
+    const sys = w.eval(`convoSystem(SCENARIOS[0])`);
+    if (!/UNEXPECTED/i.test(sys)) throw new Error("no anti-script rule");
+    if (!sys.includes('"nat"')) throw new Error("no nat field");
+  });
+
+  T("naturalness chip renders under user bubble", () => {
+    w.eval(`
+      main.innerHTML='<div class="chatlog" id="chatlog"></div>';
+      addBub('me','provo a dire una cosa');
+      const res={reply:'Ok!',translation:'Ok!',fix:'',nat:'Provo a dire qualcosa',errs:[]};
+      if(res.fix||res.nat){const b=[...document.querySelectorAll('.bub.me')].pop();
+        if(res.nat) b.innerHTML+='<span class="fix" style="background:#EAF4EF">🌿 più naturale: '+esc(res.nat)+'</span>';}
+    `);
+    if (!w.document.body.textContent.includes("più naturale")) throw new Error("chip missing");
+  });
+
+  T("Lacune sheet has Mental model buttons", () => {
+    w.eval("renderLacune()");
+    if (!w.document.querySelector('[data-mm="tempo_passati"]')) throw new Error("no mental-model button");
+    w.eval("closeSheet()");
+  });
+
+  T("Vocab packs sheet lists all contexts incl. medical + bureaucracy", () => {
+    w.eval("renderPacks()");
+    if (!w.document.querySelector('[data-pk="corsia"]')) throw new Error("corsia pack missing");
+    if (!w.document.querySelector('[data-pk="burocrazia"]')) throw new Error("burocrazia pack missing");
+    if (w.document.querySelectorAll('[data-pk]').length !== 8) throw new Error("pack count");
+    w.eval("closeSheet()");
+  });
+
+  T("Pronuncia asks native language once, then shows 7 sounds for English", () => {
+    w.eval("renderPronuncia()");
+    if (!w.document.querySelector("#prLang")) throw new Error("no language prompt");
+    w.document.querySelector("#prLang").value = "English";
+    w.document.querySelector("#prGo").click();
+    if (!w.document.body.textContent.includes("R arrotata")) throw new Error("static EN bank not rendered");
+    if (w.document.querySelectorAll("[data-try]").length < 15) throw new Error("drill buttons missing");
+    if (!w.document.body.textContent.includes("aritmie")) throw new Error("medical drills missing");
+  });
+
+  T("ACCENT_EN bank integrity (7 sounds, drills present)", () => {
+    const bad = w.eval("ACCENT_EN.filter(s=>s.length!==4||!Array.isArray(s[3])||s[3].length<2).length");
+    if (bad) throw new Error(bad+" malformed sounds");
+    if (w.eval("ACCENT_EN.length") !== 7) throw new Error("not 7 sounds");
+  });
+
+  T("Plateau protocol: day math, done-tracking, Oggi row", () => {
+    S.protocol = { start: w.eval("today()"), diagnosis:"Output avoidance.", days: Array.from({length:30},(_,i)=>"Action "+(i+1)), done:{} };
+    if (w.eval("protoDay()") !== 0) throw new Error("day="+w.eval("protoDay()"));
+    w.eval("renderOggi()");
+    if (!w.document.querySelector("#platRow").textContent.includes("Day 1/30")) throw new Error("row wrong");
+    w.eval("renderPlateau()");
+    w.document.querySelector("#ptDone").click();
+    if (!S.protocol.done[0]) throw new Error("done not tracked");
+    w.eval("closeSheet()");
+  });
+
   console.log(results.join("\n"));
   const fails = results.filter(r=>r[0]==="✗").length;
   console.log(fails ? "\n"+fails+" FAILURES" : "\nALL PASS");

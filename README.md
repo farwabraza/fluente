@@ -8,6 +8,19 @@ with mnemonics, leech rescue, and production-direction recall.
 
 ---
 
+## What's new in v4 (the coaching layer)
+
+| Layer | What it does | Where |
+|---|---|---|
+| 🎯 **Il Coach** (Fluency Architect) | Reads your *actual* data — level, top gaps, cards due, spoken turns, exam history, streak — and prescribes exactly what to do **today**: 4 sequenced ~20-min steps, each with a why grounded in your numbers and a one-tap jump into the activity. Regenerates on demand, cached per day. | Oggi, top |
+| 🗣 **Pronuncia** (Accent Surgeon) | Asks your native language once. English natives get a hand-built bank of the 7 sounds that expose you (rolled R, doppie, GLI, GN, pure vowels, C/G hard-soft, stress — with medical drill sentences); other L1s get an AI-diagnosed set. Each sound: why it gives you away, the physical fix, drills with 🔊 model / 🐢 slow / 🎙 **intelligibility test** — if Italian speech recognition mishears you, so does the barista. | Oggi → Pronuncia |
+| 🧩 **Mental Model** (Grammar Unlocked) | On any gap in your gap map: the logic a native uses *without thinking* (no rule-memorizing), a 2-second litmus test, then 5 sentences that force you to apply it. Passing reduces the gap counter. | Lacune → 🧩 |
+| 📦 **Vocab Packs** (Vocabulary Architect) | 8 real-life contexts — in corsia, dal medico, burocrazia, lavoro, casa, aperitivo, viaggio, emergenze. AI picks the 10 highest-leverage words for your level, each with the exact situation it fits + a memory hook, previewed then loaded into Ripasso. Skips what you already have. | Oggi → Vocab packs |
+| 🧗 **Plateau Breaker** | Diagnoses *why* you're stuck from real usage data (input quality vs output avoidance vs comfort looping), then generates a 30-day discomfort protocol — one concrete escalating action per day, tracked on Oggi with a progress grid. | Oggi → Plateau |
+| 🌿 **Booth: anti-script + naturalness** | The conversation partner now throws a plausible curveball every 3-4 turns so you can't rehearse, and flags phrasing that's *grammatically fine but unnatural* (green 🌿 chip) separately from grammar fixes (🔧). | Parla |
+
+---
+
 ## What's new in v3 (the "sellable" build)
 
 | Layer | What it does | Where |
@@ -84,7 +97,7 @@ Postgres you control) and a terms line; if selling to EU consumers, note GDPR ba
 | App (all of it) | `public/index.html` |
 | AI proxy + rate limits + accounts | `server.js` |
 | PWA install/offline | `public/manifest.json`, `public/sw.js` |
-| Headless test suite (16 checks, dev-only) | `smoke.js` — `npm i jsdom --no-save && node smoke.js` |
+| Headless test suite (26 checks, dev-only) | `smoke.js` — `npm i jsdom --no-save && node smoke.js` |
 
 ## 6 · Tinkering map (everything is in index.html)
 

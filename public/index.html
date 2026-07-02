@@ -225,7 +225,8 @@ const DEFAULT_STATE = {
   placed:false, level:'A1', levelIdx:0, xp:0, streak:0, lastDay:null,
   interests:[], name:'', unitsDone:{}, missions:{}, missionDay:null,
   deck:null, parlaTurns:0, writeDone:{}, xpLog:{},
-  errLog:{}, examLog:[], freqSeen:{}
+  errLog:{}, examLog:[], freqSeen:{},
+  coachPlan:null, nativeLang:'', accent7:null, protocol:null
 };
 let S = JSON.parse(JSON.stringify(DEFAULT_STATE));
 let storageOK = true;
@@ -625,6 +626,9 @@ function renderOggi(){
       <div class="stat"><div class="n">${dueCount()}</div><div class="l">cards due</div></div>
       <div class="stat"><div class="n">${S.level}</div><div class="l">your level</div></div>
     </div>
+    <div id="coachBox">
+      ${S.coachPlan&&S.coachPlan.d===today()?'':`<button class="mission" id="coachGen"><span style="font-size:1.3rem">🎯</span><span><b>Il coach — tell me exactly what to do today</b><br><span class="muted">Reads your gaps, deck & exams → today's orders, ~20 min</span></span><span class="st-go" style="margin-left:auto">VAI</span></button>`}
+    </div>
     <div class="eyebrow b">LE MISSIONI DI OGGI — each ≤ 5 min</div>
     <button class="mission ${m.lesson?'done':''}" id="m1"><span class="chk">${m.lesson?'✓':''}</span><span><b>One station on the Linea</b><br><span class="muted">A micro-lesson at your level</span></span><span style="margin-left:auto" class="tag a">+30</span></button>
     <button class="mission ${m.parla?'done':''}" id="m2"><span class="chk">${m.parla?'✓':''}</span><span><b>Speak 5 turns in the booth</b><br><span class="muted">Out loud. Yes, actually out loud.</span></span><span style="margin-left:auto" class="tag rr">+40</span></button>
@@ -645,13 +649,34 @@ function renderOggi(){
       <span><b>Esame — CILS/CELI simulator</b><br><span class="muted">Scritta · orale · ascolto · lettura, rubric-graded${S.examLog.length?' · last: '+S.examLog[S.examLog.length-1].tot+'/20':''}</span></span>
       <span class="st-go" style="margin-left:auto">VAI</span>
     </button>
+    <button class="mission" id="pronRow">
+      <span style="font-size:1.3rem">🗣</span>
+      <span><b>Pronuncia — the accent surgeon</b><br><span class="muted">${S.nativeLang?'The sounds a '+esc(S.nativeLang)+' mouth cheats on · intelligibility test':'The 7 sounds that give your accent away'}</span></span>
+      <span class="st-go" style="margin-left:auto">VAI</span>
+    </button>
+    ${(function(){ if(!S.protocol) return `
+    <button class="mission" id="platRow">
+      <span style="font-size:1.3rem">🧗</span>
+      <span><b>Plateau breaker</b><br><span class="muted">Stuck at ${S.level}? Get diagnosed + a 30-day discomfort protocol</span></span>
+      <span class="st-go" style="margin-left:auto">VAI</span>
+    </button>`;
+    const d=protoDay(), done=!!S.protocol.done[d];
+    return `
+    <button class="mission ${done?'done':''}" id="platRow">
+      <span class="chk">${done?'✓':''}</span>
+      <span><b>Protocol · Day ${d+1}/30</b><br><span class="muted">${esc(S.protocol.days[d])}</span></span>
+      <span style="margin-left:auto" class="tag rr">+15</span>
+    </button>`; })()}
     <div class="eyebrow b" style="margin-top:16px">BONUS ROUNDS · got 3 more minutes?</div>
     <div class="row" style="margin-bottom:8px">
       <button class="btn sm yellow" id="bDett" style="flex:1">👂 Dettato<br><span style="font-size:.64rem;font-weight:400">type what you hear</span></button>
       <button class="btn sm dark" id="bSpr" style="flex:1">⏱ Verb Sprint<br><span style="font-size:.64rem;font-weight:400">60s conjugation rush</span></button>
       <button class="btn sm" id="bScelta" style="flex:1;background:var(--blu);color:#fff">🎯 Scelta<br><span style="font-size:.64rem;font-weight:400">which tense?</span></button>
     </div>
-    <button class="btn sm block" id="bBoost" style="margin-bottom:14px;background:var(--carta2)">⚡ Vocab boost · +5 high-frequency words → Ripasso</button>
+    <div class="row" style="margin-bottom:14px">
+      <button class="btn sm" id="bPacks" style="flex:1.4;background:var(--verde);color:#fff">📦 Vocab packs<br><span style="font-size:.64rem;font-weight:400">10 words per context</span></button>
+      <button class="btn sm" id="bBoost" style="flex:1;background:var(--carta2)">⚡ Boost<br><span style="font-size:.64rem;font-weight:400">+5 frequency</span></button>
+    </div>
     <div class="eyebrow b">LA SETTIMANA</div>
     <div class="card" style="padding:12px">${weekStrip()}</div>
     <div class="card" style="margin-top:14px;background:var(--carta2)">
@@ -673,8 +698,13 @@ function renderOggi(){
   $('#bSpr').onclick=renderSprint;
   $('#bScelta').onclick=renderScelta;
   $('#bBoost').onclick=vocabBoost;
+  $('#bPacks').onclick=renderPacks;
   $('#gapRow').onclick=renderLacune;
   $('#esameRow').onclick=renderEsame;
+  $('#pronRow').onclick=renderPronuncia;
+  $('#platRow').onclick=renderPlateau;
+  const cg=$('#coachGen'); if(cg) cg.onclick=()=>coachPlan(false);
+  if(S.coachPlan&&S.coachPlan.d===today()) drawCoach();
   $('#syncRow').onclick=()=>{ if(CREDS){ if(confirm('Sign out on this device? Your cloud progress stays safe.')) signOut(); } else renderLogin(); };
 }
 
@@ -1084,8 +1114,8 @@ function renderParla(){
 
 function convoSystem(s){
   return `You are an Italian conversation partner inside a language app. Scenario: "${s.t}" — ${s.d}. Learner level: ${S.level}. Learner interests: ${S.interests.join(', ')}. ${s.id==='paziente'?'You play a PATIENT with a realistic presenting complaint (pick one: chest pain, persistent cough, abdominal pain, headache). Reveal details only when asked correctly, like a real anamnesi. The learner is the doctor.':''} ${s.id==='collega'?'You are a friendly specializzanda in oncologia discussing a realistic case.':''} ${s.id==='girovisite'?`You are the strutturato (attending) on morning rounds in the reparto di ${s.ward||'Medicina Interna'}. Invent ONE realistic inpatient typical of this ward (inspiration: ${s.seeds||'a common admission'}) — give name, age, day of admission. Open by asking the learner (the student on rotation) to present the patient or answer a focused question. Probe their clinical reasoning with short pimping questions appropriate to the ward, gently correct clinical Italian terminology, and reveal new findings (labs, imaging, overnight events) as the round progresses.`:''} ${s.id==='congresso'?'You are an Italian oncologist at a medical congress coffee break. Chat about research, ask about their poster and research interests, use realistic academic small talk.':''} ${s.id==='questura'?'You are an impiegato at the questura/anagrafe counter. The learner needs to sort out a realistic document issue (permesso renewal, cambio di residenza, carta d\'identità). Be realistically brisk and bureaucratic: ask for documents, mention marca da bollo, moduli, appuntamenti — use authentic sportello language (Lei form). If they use tu or informal register, gently model the formal version in your fix.':''} ${s.id==='telefonata'?'You are a call-center operator for an Italian public office or utility (pick one: comune, Agenzia delle Entrate, energy provider). The learner is calling about a realistic problem (wrong bill, missing document, appointment). Use formal phone Italian: "Mi dica", "Resti in linea", "Le passo l\'ufficio competente". Make them navigate hold-music bureaucracy realistically but resolvably.':''}
-RULES: Reply in Italian calibrated slightly above ${S.level} (i+1). Keep replies SHORT (1-3 sentences) and always end with something that invites a response. Stay in character.
-After your Italian reply, respond ONLY with JSON: {"reply":"your in-character Italian","translation":"English translation","fix":"if the learner's last message had an error: the corrected phrase + 6-word explanation; else empty string","errs":[{"t":"error taxonomy key — one of: ${ERR_TAX_KEYS}","w":"the learner's wrong phrase verbatim","r":"the corrected phrase"} — one entry per REAL error in their last message, empty array if none or if they haven't spoken yet]}`;
+RULES: Reply in Italian calibrated slightly above ${S.level} (i+1). Keep replies SHORT (1-3 sentences) and always end with something that invites a response. Stay in character. ANTI-SCRIPT RULE: every 3rd-4th turn, push the conversation somewhere plausible but UNEXPECTED within the scenario (a complication, a question they can't have rehearsed, a change of plan) so the learner must improvise, never recite.
+After your Italian reply, respond ONLY with JSON: {"reply":"your in-character Italian","translation":"English translation","fix":"if the learner's last message had a GRAMMAR error: the corrected phrase + 6-word explanation; else empty string","nat":"if their last message was grammatically fine but UNNATURAL (no native would phrase it that way): the natural version; else empty string","errs":[{"t":"error taxonomy key — one of: ${ERR_TAX_KEYS}","w":"the learner's wrong phrase verbatim","r":"the corrected phrase"} — one entry per REAL error in their last message, empty array if none or if they haven't spoken yet]}`;
 }
 
 async function startConvo(s){
@@ -1169,8 +1199,11 @@ async function userTurn(text){
   addBub('ai','<span class="spinner"></span>');
   const res = await ai(convo.slice(-12), convoSystem(curScen), true);
   // attach fix to user's bubble
-  if(res&&res.fix){ const myBubs=[...document.querySelectorAll('.bub.me')]; const mine=myBubs[myBubs.length-1];
-    if(mine) mine.innerHTML+=`<span class="fix">🔧 ${esc(res.fix)}</span>`; }
+  if(res&&(res.fix||res.nat)){ const myBubs=[...document.querySelectorAll('.bub.me')]; const mine=myBubs[myBubs.length-1];
+    if(mine){
+      if(res.fix) mine.innerHTML+=`<span class="fix">🔧 ${esc(res.fix)}</span>`;
+      if(res.nat) mine.innerHTML+=`<span class="fix" style="background:#EAF4EF">🌿 più naturale: ${esc(res.nat)}</span>`;
+    } }
   if(res&&res.errs) logErrs(res.errs,'parla');
   replaceLastAI(res);
   if(myTurns===5){ S.missions.parla=true; touchStreak(); gainXP(40); save(); toast('Missione completata: 5 turns spoken! +40 XP 🎙'); }
@@ -1676,10 +1709,59 @@ function renderLacune(){
        <div style="height:8px;background:var(--carta2);border:1.5px solid var(--ink);border-radius:6px;margin:6px 0;overflow:hidden"><div style="height:100%;width:${Math.round(g.n/max*100)}%;background:var(--rosso)"></div></div>
        <div class="muted" style="font-size:.76rem">${esc(ERR_TAX[g.t][1])}</div>
        ${g.ex[0]?`<div style="font-size:.78rem;margin-top:6px;background:#fff;border:1.5px solid var(--ink);border-radius:8px;padding:6px 9px">✗ <s style="opacity:.65">${esc(g.ex[0].w)}</s><br>✓ <b>${esc(g.ex[0].r)}</b></div>`:''}
-       <button class="btn sm dark block" data-fix="${g.t}" style="margin-top:8px">🔧 Ripara →</button>
+       <div class="row" style="margin-top:8px">
+         <button class="btn sm dark" data-fix="${g.t}" style="flex:1">🔧 Ripara →</button>
+         <button class="btn sm yellow" data-mm="${g.t}" style="flex:1">🧩 Mental model</button>
+       </div>
      </div>`;
    }).join('')}`);
   document.querySelectorAll('[data-fix]').forEach(b=>b.onclick=()=>repairDrill(b.dataset.fix));
+  document.querySelectorAll('[data-mm]').forEach(b=>b.onclick=()=>mentalModel(b.dataset.mm));
+}
+
+/* Grammar Unlocked — the native's mental model, logic not rules, then 5 forced applications */
+async function mentalModel(type){
+  const g=S.errLog[type]||{ex:[]};
+  sheetBody('<div style="text-align:center;padding:40px 0"><span class="spinner"></span><p class="muted" style="margin-top:8px">Reverse-engineering the native brain…</p></div>');
+  const res=await ai([{role:'user',content:`You are a linguist who explains grammar through LOGIC, not rules to memorize. A ${S.level} Italian learner keeps failing at: "${ERR_TAX[type][0]}". Their actual mistakes: ${JSON.stringify(g.ex||[])}.
+Respond ONLY with JSON:
+{"model":"the mental model a native uses WITHOUT thinking — the underlying logic/intuition, 60-90 words, vivid, no jargon","litmus":"a one-sentence test the learner can run in their head in 2 seconds to pick the right form","items":[{"s":"sentence with ___ that FORCES applying the model","o":["option A","option B"],"a":0,"w":"max 12-word why, in terms of the model"} x5]}`}],'Brilliant linguist. Logic over rules. JSON only.',true,2500);
+  if(!res||!res.items){ sheetBody('<div class="card">⚠ Couldn\'t build — reopen and retry.</div>'); return; }
+  let i=-1, correct=0;
+  function show(){
+    if(i<0){
+      sheetBody(`
+        <div class="eyebrow r">🧩 THE MENTAL MODEL · ${esc(ERR_TAX[type][0]).toUpperCase()}</div>
+        <div class="card" style="background:var(--ink);color:var(--carta)">
+          <p style="font-size:.94rem;line-height:1.5">${esc(res.model)}</p>
+        </div>
+        <div class="mnemo"><div class="eyebrow">⚡ THE 2-SECOND LITMUS TEST</div>${esc(res.litmus)}</div>
+        <button class="btn primary block" id="mmGo">Force me to apply it → (5 sentences)</button>`);
+      $('#mmGo').onclick=()=>{i=0;show();}; return;
+    }
+    if(i>=res.items.length){
+      gainXP(15); touchStreak();
+      if(correct>=4 && S.errLog[type]) S.errLog[type].n=Math.max(0,S.errLog[type].n-2);
+      save();
+      sheetBody(`<div style="text-align:center;padding:20px 0"><div style="font-size:3rem">${correct>=4?'🧠':'📚'}</div><h1>${correct}/${res.items.length}</h1><p class="muted">${correct>=4?'The model is installing — counter reduced.':'Reread the model. It clicks on the second pass.'} +15 XP</p><button class="btn primary block" id="mmDone" style="margin-top:14px">Back to gap map →</button></div>`);
+      $('#mmDone').onclick=renderLacune; return;
+    }
+    const it=res.items[i];
+    sheetBody(`
+      <div class="eyebrow b">APPLY THE MODEL · ${i+1}/${res.items.length}</div>
+      <div class="mnemo" style="margin-bottom:8px;font-size:.78rem">⚡ ${esc(res.litmus)}</div>
+      <div class="card"><h2 style="font-size:1.1rem">${esc(it.s)}</h2></div>
+      ${it.o.map((o,k)=>`<button class="qopt" data-k="${k}">${esc(o)}</button>`).join('')}
+      <div id="mmFb"></div>`);
+    document.querySelectorAll('.sheet .qopt').forEach(b=>b.onclick=()=>{
+      const k=+b.dataset.k;
+      document.querySelectorAll('.sheet .qopt').forEach(x=>x.disabled=true);
+      if(k===it.a){b.classList.add('right');correct++;} else {b.classList.add('wrong');document.querySelectorAll('.sheet .qopt')[it.a].classList.add('right');}
+      $('#mmFb').innerHTML=`<div class="mnemo" style="margin-top:10px"><b>${k===it.a?'✓':'✗'} </b>${esc(it.w)}</div><button class="btn dark block" id="mmN">${i<res.items.length-1?'Next →':'Result →'}</button>`;
+      $('#mmN').onclick=()=>{i++;show();};
+    });
+  }
+  show();
 }
 
 async function repairDrill(type){
@@ -1834,6 +1916,228 @@ function renderScelta(){
     });
   }
   ui();
+}
+
+/* =========================================================
+   COACH — the Fluency Architect. Reads your actual state
+   (level, gaps, deck, exams, streak) and prescribes exactly
+   what to do TODAY. Not a plan — today's orders.
+========================================================= */
+const COACH_GO = {linea:()=>setTab('linea'), parla:()=>setTab('parla'), srs:()=>setTab('srs'), scrivi:()=>{setTab('oggi');setTimeout(renderScrivi,50);}, dettato:renderDettato, sprint:renderSprint, scelta:renderScelta, esame:()=>renderEsame(), lacune:()=>renderLacune(), pronuncia:()=>renderPronuncia(), med:()=>setTab('med'), cinema:()=>setTab('cinema'), verbi:()=>setTab('verbi'), packs:()=>renderPacks()};
+function coachSnapshot(){
+  const g=topGaps(3);
+  const active7=Object.keys(S.xpLog).filter(d=>d>=new Date(Date.now()-7*86400e3).toISOString().slice(0,10)).length;
+  const lastEx=S.examLog[S.examLog.length-1];
+  return {level:S.level, streak:S.streak, activeDaysLast7:active7, cardsDue:dueCount(), deckSize:S.deck.length,
+    topGaps:g.map(x=>({gap:ERR_TAX[x.t][0], count:x.n})), spokenTurnsTotal:S.parlaTurns||0,
+    lastExam:lastEx?lastEx.lv+' '+lastEx.p+' '+lastEx.tot+'/20':'never attempted',
+    interests:S.interests, missionsDoneToday:Object.entries(getMissions()).filter(x=>x[1]).map(x=>x[0])};
+}
+async function coachPlan(force){
+  const box=$('#coachBox'); if(!box) return;
+  if(!force && S.coachPlan && S.coachPlan.d===today()){ drawCoach(); return; }
+  box.innerHTML='<div class="card" style="text-align:center"><span class="spinner"></span><p class="muted" style="margin-top:8px">Il coach studia i tuoi dati…</p></div>';
+  const res=await ai([{role:'user',content:`You are a polyglot coach who takes adults to conversational fluency fast. Learner data (real, from their app): ${JSON.stringify(coachSnapshot())}.
+Prescribe EXACTLY what to do today — specific, sequenced, ~20 min total, attacking their weakest point first. Available activities (use these keys only): linea (grammar micro-lesson), parla (speaking booth), srs (flashcard review), scrivi (corrected writing), dettato (dictation), sprint (conjugation speed), scelta (tense-choice drill), esame (exam simulation), lacune (gap repair drill), pronuncia (accent drills), packs (context vocabulary), cinema (prescribed watching), med (medical Italian).
+Respond ONLY with JSON: {"focus":"today's one-line theme, direct and specific to THEIR data","steps":[{"t":"imperative task title, specific (e.g. 'Repair passato vs imperfetto — 5 sentences')","why":"max 10 words tying it to their data","min":minutes,"go":"activity key"} x4]}`}],'Elite, direct language coach. No fluff. JSON only.',true,1500);
+  if(!res||!res.steps){ box.innerHTML='<div class="card">⚠ Coach unreachable — tap to retry.</div>'; box.onclick=()=>coachPlan(true); return; }
+  S.coachPlan={d:today(), focus:res.focus, steps:res.steps.slice(0,5)}; save();
+  drawCoach();
+}
+function drawCoach(){
+  const box=$('#coachBox'); if(!box||!S.coachPlan) return;
+  const P=S.coachPlan;
+  box.innerHTML=`
+  <div class="card" style="background:var(--ink);color:var(--carta)">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div class="eyebrow" style="color:var(--giallo)">🎯 IL COACH · OGGI FAI QUESTO</div>
+      <button class="btn sm" id="coachRe" style="background:#26262e;color:var(--carta);border-color:#3a3a44;box-shadow:none;padding:3px 8px">↻</button>
+    </div>
+    <p style="font-size:.92rem;font-weight:700;margin:4px 0 8px">${esc(P.focus)}</p>
+    ${P.steps.map((s,i)=>`<button class="scen" data-go="${esc(s.go)}" style="background:#26262e;border-color:#3a3a44;color:var(--carta);margin-bottom:6px">
+      <span class="em" style="font-family:var(--font-d)">${i+1}</span>
+      <span><b style="color:var(--carta)">${esc(s.t)}</b><span style="color:#9a9aa5">${esc(s.why||'')} · ~${s.min||5} min</span></span>
+    </button>`).join('')}
+  </div>`;
+  $('#coachRe').onclick=()=>coachPlan(true);
+  box.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>{ const f=COACH_GO[b.dataset.go]; if(f)f(); else setTab('oggi'); });
+}
+
+/* =========================================================
+   VOCAB PACKS — the Vocabulary Architect. Highest-leverage
+   words per real context, each with situation + memory hook.
+========================================================= */
+const PACK_CONTEXTS = [
+ ['corsia','🩺','In corsia — ward survival'],
+ ['visita','🏥','Dal medico / la visita'],
+ ['burocrazia','🛂','Burocrazia — questura, comune, PEC'],
+ ['lavoro','💼','Al lavoro — meetings & email'],
+ ['casa','🏠','Casa & affitto'],
+ ['sociale','🍕','Aperitivo & small talk'],
+ ['viaggio','🚆','In viaggio'],
+ ['emergenze','🚨','Emergenze & pronto soccorso']
+];
+function renderPacks(){
+  showSheet('<div class="eyebrow r">📦 VOCAB PACKS · HIGHEST-LEVERAGE WORDS</div>',`
+    <p class="muted" style="margin-bottom:10px">Pick a real-life context. The architect picks the 10 words with the highest usage-per-effort for your level — each with the situation it fits and a memory hook — and loads them into Ripasso.</p>
+    ${PACK_CONTEXTS.map(p=>`<button class="scen" data-pk="${p[0]}"><span class="em">${p[1]}</span><span><b>${esc(p[2])}</b><span>10 words · situation + hook</span></span></button>`).join('')}`);
+  document.querySelectorAll('[data-pk]').forEach(b=>b.onclick=()=>buildPack(b.dataset.pk));
+}
+async function buildPack(ctx){
+  const meta=PACK_CONTEXTS.find(p=>p[0]===ctx);
+  const have=S.deck.filter(c=>String(c.id).startsWith('pk-'+ctx)).map(c=>c.it);
+  sheetBody('<div style="text-align:center;padding:40px 0"><span class="spinner"></span><p class="muted" style="margin-top:8px">Selecting the 10 highest-leverage words…</p></div>');
+  const res=await ai([{role:'user',content:`You are a memory coach for language learners. Context: "${meta[2]}". Learner level: ${S.level}, interests: ${S.interests.join(', ')||'general'}. Already knows (skip these): ${have.join(', ')||'nothing from this pack yet'}.
+Pick the 10 HIGHEST-LEVERAGE Italian words/phrases for this context — maximum real-world usage per effort at their level, not obscure. Respond ONLY with JSON:
+{"words":[{"it":"word/phrase","en":"meaning","sit":"the exact situation you'd use it, max 10 words","mn":"vivid English memory hook, max 16 words","ex":"short natural example sentence"} x10]}`}],'Vocabulary architect. JSON only.',true,3000);
+  if(!res||!res.words){ sheetBody('<div class="card">⚠ Couldn\'t build — reopen and retry.</div>'); return; }
+  sheetBody(`
+    <div class="eyebrow b">${meta[1]} ${esc(meta[2]).toUpperCase()} · PREVIEW</div>
+    ${res.words.map(w=>`<div class="card flat" style="margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;gap:8px"><b>${esc(w.it)}</b><span class="muted" style="font-size:.8rem">${esc(w.en)}</span></div>
+      <div style="font-size:.76rem;color:var(--blu);font-weight:700;margin-top:2px">📍 ${esc(w.sit||'')}</div>
+      <div style="font-size:.76rem;margin-top:2px">🧠 ${esc(w.mn||'')}</div>
+    </div>`).join('')}
+    <button class="btn green block" id="pkAdd">Add all 10 → Ripasso</button>`);
+  $('#pkAdd').onclick=()=>{
+    let added=0;
+    res.words.forEach(w=>{
+      const id='pk-'+ctx+'-'+String(w.it).toLowerCase().replace(/\W/g,'').slice(0,24);
+      if(S.deck.find(c=>c.id===id)) return;
+      S.deck.push({id, it:w.it, en:w.en, mn:w.mn||'', ex:(w.sit?('['+w.sit+'] '):'')+(w.ex||''), due:Date.now(), ivl:0, ease:2.5, lapses:0});
+      added++;
+    });
+    save(); toast('+'+added+' words → Ripasso 📦'); closeSheet();
+    if(TAB==='oggi') renderOggi();
+  };
+}
+
+/* =========================================================
+   PRONUNCIA — the Accent Surgeon. The sounds that give you
+   away, the physical fix, and an honest intelligibility test:
+   if Italian speech recognition mishears you, so do Italians.
+========================================================= */
+const ACCENT_EN = [ // for English natives: [sound, why it exposes you, physical fix, drills]
+ ['La R arrotata','The English R (tongue curled back, no contact) is the #1 giveaway.','Tongue TIP taps/trills just behind the top teeth. Start with "d-d-d" fast until it buzzes: "tre, treno, trenta".',['Trentatré trentini entrarono a Trento, tutti e trentatré trotterellando.','Il ritmo cardiaco è regolare, senza aritmie.','Ho preso il treno per Roma alle tre.']],
+ ['Le doppie','fato≠fatto, pena≠penna, capello≠cappello. English has no length contrast — Italians hear the wrong word.','HOLD the consonant a beat, like a tiny pause inside the word: fat-to. The vowel before it gets shorter.',['Ho fatto un fatto, non un fato.','La paziente ha una commozione cerebrale, non un\'emorragia.','Mamma ha messo la penna nella cappelliera.']],
+ ['GLI [ʎ]','Saying "glee" instead of the palatal ʎ marks you instantly.','Press the BODY of the tongue (not the tip) flat against the hard palate and let air slide around the sides: "famiglia".',['Il coniglio taglia l\'aglio per la famiglia.','Meglio ripetere gli esami degli occhi.','Voglio togliere questi fogli dal tavolo.']],
+ ['GN [ɲ]','English "gn" splits into g+n; Italian is ONE nasal palatal sound, like "ny" in canyon but tighter.','Tongue body up to the palate, air through the nose: "gnocchi", not "guh-nocchi".',['Ogni bagno ha un segno di legno.','Il paziente lamenta prurito a ogni cambio di stagione.','Sogno gli gnocchi della nonna ogni giugno.']],
+ ['Vocali pure','English glides vowels into diphthongs: "solo" becomes "soʊloʊ". Italian vowels are frozen — one shape, start to finish.','Lock jaw and lips in position for the whole vowel. Exaggerate: "o" stays O.',['Sono andato solo a Milano in agosto.','La colonscopia è programmata per lunedì otto.','Ho un po\' di mal di gola, come volevasi dimostrare.']],
+ ['C/G dolce e dura','chi/che = hard K, ci/ce = "ch" — reading them English-style scrambles words: medici vs chirurghi.','H makes it HARD: chi=ki, ghe=ghe. No H before i/e = soft: ci=chi(English), gi=ji.',['I medici e i chirurghi discutono della chirurgia del ginocchio.','Cerco il ghiaccio in cucina per il ghiacciolo.','C\'è una gita al lago di Garda, ci vieni anche tu?']],
+ ['L\'accento giusto','Stressing the wrong syllable — especially in Latin-looking medical words — is pure foreign accent: it\'s dia-BE-te, not DIA-bete.','When unsure, Italian leans on the second-to-last syllable — but memorize the sdrucciole (stress 3rd from end): mèdico, fègato, esòfago, vàlvola, tràchea.',['Il diabete danneggia il fegato e l\'esofago.','La valvola mitrale e la trachea sono nella norma.','L\'utile lezione di medicina è utile davvero.']]
+];
+function renderPronuncia(){
+  if(!S.nativeLang){
+    main.innerHTML=`
+    <div class="fadein">
+      <button class="btn sm" id="prBack" style="margin-bottom:10px">← Oggi</button>
+      <div class="eyebrow r">PRONUNCIA · THE ACCENT SURGEON</div>
+      <h1 style="margin-bottom:8px">What's your mouth<br>used to?</h1>
+      <p class="muted" style="margin-bottom:12px">Your accent comes from your first language — the surgeon needs to know which sounds your mouth has never had to make.</p>
+      <input class="ti" id="prLang" placeholder="Your native language (e.g. English, Urdu, French)" style="width:100%">
+      <button class="btn primary block" id="prGo" style="margin-top:10px">Diagnose my accent →</button>
+    </div>`;
+    $('#prBack').onclick=()=>setTab('oggi');
+    $('#prGo').onclick=()=>{ const v=$('#prLang').value.trim(); if(v.length<2){toast('Type your native language');return;} S.nativeLang=v; save(); renderPronuncia(); };
+    return;
+  }
+  const isEN=/^(english|inglese|en)$/i.test(S.nativeLang.trim());
+  if(!isEN && !S.accent7){ return buildAccent7(); }
+  const bank = isEN ? ACCENT_EN : S.accent7;
+  main.innerHTML=`
+  <div class="fadein">
+    <button class="btn sm" id="prBack" style="margin-bottom:10px">← Oggi</button>
+    <div class="eyebrow r">PRONUNCIA · THE ${bank.length} SOUNDS THAT EXPOSE YOU (${esc(S.nativeLang.toUpperCase())})</div>
+    <h1 style="margin-bottom:6px">Surgery on your accent.</h1>
+    <p class="muted" style="margin-bottom:6px">For each sound: why it gives you away, the physical fix, and drill sentences. The 🎙 test is honest by design — <b>if Italian speech recognition mishears you, so does the barista.</b></p>
+    <p class="muted" style="font-size:.72rem;margin-bottom:12px">${SR?'':'⚠ Mic not supported in this browser — 🔊 modeling still works, record on Chrome/Edge.'}<button class="btn sm" id="prLangBtn" style="box-shadow:none;padding:2px 8px">native language: ${esc(S.nativeLang)} ✎</button></p>
+    ${bank.map((s,i)=>`
+    <div class="card flat" style="margin-bottom:10px;border-left:6px solid var(--blu)">
+      <b style="font-size:1rem">${i+1}. ${esc(s[0])}</b>
+      <div style="font-size:.8rem;margin:4px 0"><b style="color:var(--rosso)">Why it exposes you:</b> ${esc(s[1])}</div>
+      <div style="font-size:.8rem;margin-bottom:6px"><b style="color:var(--verde)">The fix:</b> ${esc(s[2])}</div>
+      ${(s[3]||[]).map((d,k)=>`
+        <div style="background:#fff;border:1.5px solid var(--ink);border-radius:8px;padding:6px 9px;margin-bottom:5px">
+          <div style="font-size:.85rem;margin-bottom:4px">${esc(d)}</div>
+          <div class="row">
+            <button class="btn sm yellow" data-hear="${i}-${k}" style="flex:1;box-shadow:none">🔊 model</button>
+            <button class="btn sm yellow" data-slow="${i}-${k}" style="flex:1;box-shadow:none">🐢 slow</button>
+            <button class="btn sm dark" data-try="${i}-${k}" style="flex:1;box-shadow:none">🎙 test me</button>
+          </div>
+          <div id="prFb-${i}-${k}"></div>
+        </div>`).join('')}
+    </div>`).join('')}
+  </div>`;
+  $('#prBack').onclick=()=>setTab('oggi');
+  $('#prLangBtn').onclick=()=>{ S.nativeLang=''; S.accent7=null; save(); renderPronuncia(); };
+  const drill=(id)=>{ const [i,k]=id.split('-').map(Number); return bank[i][3][k]; };
+  document.querySelectorAll('[data-hear]').forEach(b=>b.onclick=()=>speak(drill(b.dataset.hear),0.92));
+  document.querySelectorAll('[data-slow]').forEach(b=>b.onclick=()=>speak(drill(b.dataset.slow),0.6));
+  document.querySelectorAll('[data-try]').forEach(b=>b.onclick=()=>{
+    const id=b.dataset.try, target=drill(id), fb=$('#prFb-'+id);
+    b.textContent='🔴 speak…';
+    listen(heard=>{
+      b.textContent='🎙 test me';
+      const norm=s=>s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z' ]/g,'').split(/\s+/).filter(Boolean);
+      const T=norm(target), U=norm(heard);
+      const hits=T.filter((w,ix)=>U.includes(w)).length, pct=T.length?Math.round(hits/T.length*100):0;
+      if(pct>=85){ gainXP(5); }
+      fb.innerHTML=`<div style="font-size:.76rem;margin-top:5px;padding:5px 8px;border-radius:6px;background:${pct>=85?'#cdeedd':pct>=60?'#fdf3d0':'#ffd2d0'}"><b>${pct}% intelligible.</b> Heard: "${esc(heard)}"${pct<85?' — the mangled words are exactly where your mouth cheated.':' — un italiano ti capirebbe. 🎉'}</div>`;
+    },null,err=>{ b.textContent='🎙 test me'; toast(err==='nosr'?'No mic support — use Chrome/Edge':'Mic error — try again'); });
+  });
+}
+async function buildAccent7(){
+  main.innerHTML=`<div class="fadein" style="text-align:center;padding-top:60px"><span class="spinner"></span><p class="muted" style="margin-top:10px">Diagnosing a ${esc(S.nativeLang)} accent in Italian…</p></div>`;
+  const res=await ai([{role:'user',content:`You are a pronunciation coach. Learner's native language: ${S.nativeLang}. Target: Italian. Identify the 7 Italian sounds/features their mouth is least used to (based on ${S.nativeLang} phonology), why each gives their accent away, and the concrete PHYSICAL adjustment. Include 2-3 drill sentences each (natural Italian; make at least one drill per sound use medical or bureaucratic vocabulary). Respond ONLY with JSON:
+{"sounds":[["sound name","why it exposes them, max 25 words","physical fix, max 30 words",["drill 1","drill 2","drill 3"]] x7]}`}],'Expert phonetician and pronunciation coach. JSON only.',true,3500);
+  if(!res||!res.sounds){ main.innerHTML='<div class="card">⚠ Couldn\'t diagnose — connection issue.</div><button class="btn sm" onclick="renderPronuncia()">Retry</button>'; return; }
+  S.accent7=res.sounds; save(); renderPronuncia();
+}
+
+/* =========================================================
+   PLATEAU — the Plateau Breaker. Diagnoses WHY you're stuck
+   from real usage data, then a 30-day discomfort protocol.
+========================================================= */
+function protoDay(){
+  if(!S.protocol) return -1;
+  const d=Math.floor((Date.parse(today())-Date.parse(S.protocol.start))/86400e3);
+  return Math.min(d, S.protocol.days.length-1);
+}
+async function renderPlateau(){
+  if(S.protocol){
+    const d=protoDay(), P=S.protocol, doneToday=!!P.done[d];
+    const doneN=Object.keys(P.done).length;
+    showSheet('<div class="eyebrow r">🧗 PLATEAU BREAKER · DAY '+(d+1)+'/30</div>',`
+      <div class="card" style="background:var(--ink);color:var(--carta)">
+        <div class="eyebrow" style="color:var(--giallo)">LA DIAGNOSI</div>
+        <p style="font-size:.88rem">${esc(P.diagnosis)}</p>
+      </div>
+      <div class="card" style="border-left:8px solid var(--rosso)">
+        <div class="eyebrow r">OGGI · GIORNO ${d+1}</div>
+        <h2 style="font-size:1.05rem">${esc(P.days[d])}</h2>
+        <button class="btn ${doneToday?'green':'dark'} block" id="ptDone" style="margin-top:10px">${doneToday?'✓ Fatto — +15 XP':'Fatto → (+15 XP)'}</button>
+      </div>
+      <div class="card" style="padding:12px"><div class="eyebrow">PROGRESSO · ${doneN}/30</div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">${P.days.map((_,i)=>`<div title="Day ${i+1}" style="width:16px;height:16px;border:1.5px solid var(--ink);border-radius:4px;background:${P.done[i]?'var(--verde)':i===d?'var(--giallo)':i<d?'#ffd2d0':'var(--carta2)'}"></div>`).join('')}</div>
+      </div>
+      <details style="margin-top:8px"><summary class="muted" style="cursor:pointer;font-size:.8rem">See all 30 days</summary>
+        ${P.days.map((x,i)=>`<div style="font-size:.78rem;padding:4px 0;border-bottom:1px solid var(--carta2)"><b>${i+1}.</b> ${esc(x)} ${P.done[i]?'✓':''}</div>`).join('')}
+      </details>
+      <button class="btn sm block" id="ptReset" style="margin-top:10px;background:var(--carta2)">Abandon & re-diagnose</button>`);
+    $('#ptDone').onclick=()=>{ if(!S.protocol.done[d]){ S.protocol.done[d]=1; gainXP(15); touchStreak(); save(); } renderPlateau(); };
+    $('#ptReset').onclick=()=>{ if(confirm('Abandon this protocol? Progress is kept in XP, the plan is discarded.')){ S.protocol=null; save(); renderPlateau(); } };
+    return;
+  }
+  showSheet('<div class="eyebrow r">🧗 PLATEAU BREAKER</div>','<div style="text-align:center;padding:40px 0"><span class="spinner"></span><p class="muted" style="margin-top:8px">Diagnosing why you\'re stuck…</p></div>');
+  const snap=coachSnapshot();
+  snap.scriviSessions=Object.values(S.missions).length; snap.gapMapSize=Object.keys(S.errLog).length;
+  const res=await ai([{role:'user',content:`You are a language coach for learners who've stopped improving. Learner's REAL usage data: ${JSON.stringify(snap)}.
+1) Diagnose the primary reason they'd plateau: input quality, output avoidance, or comfort looping — grounded in THEIR numbers (e.g. lots of flashcards but few spoken turns = output avoidance).
+2) Build a 30-day discomfort protocol: one concrete daily action each day that forces real progress. Escalate difficulty weekly. Actions must be doable inside or alongside this app (booth scenarios incl. medical rounds & bureaucracy calls, exam simulations, writing, dictation, watching Italian TV like DOC or Mare Fuori, shadowing, voice messages, ordering in Italian in real life). Keep each under 15 words.
+Respond ONLY with JSON: {"diagnosis":"3-4 sentences, direct, grounded in their data","days":["day 1 action", ... x30]}`}],'Direct, honest coach. Discomfort is the method. JSON only.',true,3000);
+  if(!res||!res.days){ sheetBody('<div class="card">⚠ Couldn\'t diagnose — reopen and retry.</div>'); return; }
+  S.protocol={start:today(), diagnosis:res.diagnosis, days:res.days.slice(0,30), done:{}};
+  save(); renderPlateau();
 }
 
 /* =========================================================
