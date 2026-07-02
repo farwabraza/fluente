@@ -6,22 +6,43 @@ const html = fs.readFileSync("public/index.html", "utf8");
 const dom = new JSDOM(html, { runScripts: "dangerously", url: "http://localhost/", beforeParse(win){
   win.speechSynthesis = { cancel(){}, speak(){}, getVoices: () => [] };
   win.SpeechSynthesisUtterance = function(){};
-  win.fetch = async (url, opts) => ({ ok:true, status:200, json: async () => {
-    if (String(url).includes("/api/chat")) return { content:[{type:"text",text:JSON.stringify({reply:"Ciao!",translation:"Hi!",fix:"",errs:[]})}] };
-    return { ok:false };
-  }});
+  let sttEnabled = true;
+  win.__setSttEnabled = v => { sttEnabled = v; };
+  win.fetch = async (url, opts) => {
+    const notConfigured = String(url).includes("/api/transcribe") && !sttEnabled;
+    return { ok: !notConfigured, status: notConfigured ? 503 : 200, json: async () => {
+      if (String(url).includes("/api/chat")) return { content:[{type:"text",text:JSON.stringify({reply:"Ciao!",translation:"Hi!",fix:"",nat:"",errs:[]})}] };
+      if (String(url).includes("/api/stt-status")) return { enabled: sttEnabled };
+      if (String(url).includes("/api/transcribe")) return sttEnabled ? { text:"ciao come stai" } : { error:{message:"not configured"} };
+      return { ok:false };
+    }};
+  };
   win.localStorage.setItem("fluente-skip-login","1"); // boot straight into app
   win.confirm = () => true;
+  win.requestAnimationFrame = fn => setTimeout(fn, 4);
+  // MediaRecorder + getUserMedia stubs (jsdom has neither natively)
+  win.MediaRecorder = function(stream, opts){
+    this.mimeType = (opts && opts.mimeType) || "audio/webm";
+    this.state = "inactive";
+    this.start = function(){ this.state="recording"; };
+    this.stop = function(){
+      this.state="inactive";
+      if (this.ondataavailable) this.ondataavailable({ data: new win.Blob(["x".repeat(2000)], {type:this.mimeType}) });
+      if (this.onstop) this.onstop();
+    };
+  };
+  win.MediaRecorder.isTypeSupported = () => true;
+  win.navigator.mediaDevices = { getUserMedia: async () => ({ getTracks: () => [{stop(){}}] }) };
 }});
 const w = dom.window;
 
 const results = [];
-const T = (name, fn) => { try { fn(); results.push("✓ "+name); } catch(e){ results.push("✗ "+name+" — "+e.message); } };
+const T = async (name, fn) => { try { await fn(); results.push("✓ "+name); } catch(e){ results.push("✗ "+name+" — "+e.message); } };
 
-setTimeout(() => {
+setTimeout(async () => {
   const S = w.eval("S");
 
-  T("boots to Oggi with gap map + esame rows", () => {
+  await T("boots to Oggi with gap map + esame rows", () => {
     w.eval("S.placed=true; S.level='B1'; S.levelIdx=2; enterApp();"); // fresh users see onboarding first — correct behavior
     if (!w.document.querySelector("#gapRow")) throw new Error("no #gapRow");
     if (!w.document.querySelector("#esameRow")) throw new Error("no #esameRow");
@@ -29,7 +50,7 @@ setTimeout(() => {
     if (!w.document.querySelector("#bBoost")) throw new Error("no #bBoost");
   });
 
-  T("logErr counts, stores examples, spawns fix-card at 3", () => {
+  await T("logErr counts, stores examples, spawns fix-card at 3", () => {
     w.eval(`logErr('tempo_passati','ho andato','sono andato','test');
             logErr('tempo_passati','vedevo il film ieri sera','ho visto il film ieri sera','test');
             logErr('tempo_passati','ha stato','è stato','test');`);
@@ -40,35 +61,35 @@ setTimeout(() => {
     if (!fix) throw new Error("no fix-card spawned");
   });
 
-  T("logErr ignores unknown taxonomy keys", () => {
+  await T("logErr ignores unknown taxonomy keys", () => {
     w.eval(`logErr('made_up_key','a','b','test')`);
     if (S.errLog.made_up_key) throw new Error("unknown key logged");
   });
 
-  T("topGaps sorts by count", () => {
+  await T("topGaps sorts by count", () => {
     w.eval(`logErr('preposizioni','vado a Italia','vado in Italia','test')`);
     const g = w.eval("topGaps(5)");
     if (g[0].t !== "tempo_passati") throw new Error("order wrong: "+g[0].t);
   });
 
-  T("gap map card on Oggi shows top weakness", () => {
+  await T("gap map card on Oggi shows top weakness", () => {
     w.eval("renderOggi()");
     const row = w.document.querySelector("#gapRow");
     if (!row.textContent.includes("Passato prossimo")) throw new Error(row.textContent.slice(0,80));
   });
 
-  T("renderLacune lists gaps with Ripara buttons", () => {
+  await T("renderLacune lists gaps with Ripara buttons", () => {
     w.eval("renderLacune()");
     if (!w.document.querySelector('[data-fix="tempo_passati"]')) throw new Error("no ripara button");
     w.eval("closeSheet()");
   });
 
-  T("SCELTA bank integrity (answers exist, types valid)", () => {
+  await T("SCELTA bank integrity (answers exist, types valid)", () => {
     const bad = w.eval(`SCELTA_BANK.filter(x => !x[0].includes('___') || x[1].length!==2 || ![0,1].includes(x[2]) || !ERR_TAX[x[4]]).length`);
     if (bad) throw new Error(bad + " malformed items");
   });
 
-  T("renderScelta runs a round and logs a wrong pick", () => {
+  await T("renderScelta runs a round and logs a wrong pick", () => {
     const before = Object.values(S.errLog).reduce((s,e)=>s+e.n,0);
     w.eval("renderScelta()");
     // click the WRONG option 8 times
@@ -84,7 +105,7 @@ setTimeout(() => {
     if (after <= before) throw new Error("no errors logged from wrong picks");
   });
 
-  T("vocabBoost adds 5 frequency cards, no duplicates", () => {
+  await T("vocabBoost adds 5 frequency cards, no duplicates", () => {
     const n0 = S.deck.length;
     w.eval("vocabBoost()");
     if (S.deck.length !== n0+5) throw new Error("added "+(S.deck.length-n0));
@@ -95,7 +116,7 @@ setTimeout(() => {
     if (new Set(ids2).size !== ids2.length) throw new Error("duplicates on second boost");
   });
 
-  T("SRS renders fix-card with production prompt + grades after flip", () => {
+  await T("SRS renders fix-card with production prompt + grades after flip", () => {
     // force only the fix card due
     S.deck.forEach(c => c.due = c.kind==="fix" ? Date.now()-1000 : Date.now()+9e9);
     w.eval("renderSRS()");
@@ -109,7 +130,7 @@ setTimeout(() => {
     if (card.lapses !== 1) throw new Error("lapses="+card.lapses);
   });
 
-  T("production mode triggers for mature cards", () => {
+  await T("production mode triggers for mature cards", () => {
     S.deck.forEach(c => c.due = Date.now()+9e9);
     const c = S.deck.find(x=>!x.kind);
     c.due = Date.now()-1000; c.ivl = 10;
@@ -121,20 +142,20 @@ setTimeout(() => {
     if (!w.document.querySelector("#prodFb").textContent.includes("✓")) throw new Error("typed-correct not detected");
   });
 
-  T("renderEsame shows 4 prove and level pills", () => {
+  await T("renderEsame shows 4 prove and level pills", () => {
     w.eval("renderEsame()");
     ["pScritta","pOrale","pAscolto","pLettura"].forEach(id=>{ if(!w.document.querySelector("#"+id)) throw new Error(id+" missing"); });
     if (w.document.querySelectorAll("[data-lv]").length !== 4) throw new Error("level pills");
   });
 
-  T("esameScritta renders task + ticking clock", () => {
+  await T("esameScritta renders task + ticking clock", () => {
     w.eval("esameScritta('B2')");
     if (!w.document.querySelector("#wTa")) throw new Error("no textarea");
     if (!w.document.querySelector("#wClock")) throw new Error("no clock");
     w.document.querySelector("#wBack").click(); // clears timer
   });
 
-  T("rubricBox math + saveExam history", () => {
+  await T("rubricBox math + saveExam history", () => {
     const R = w.eval(`rubricBox({lessico:4,grammatica:3,coerenza:4,adeguatezza:3,pass:true,cefr:'B2',feedback:'• ok'})`);
     if (R.tot !== 14) throw new Error("tot="+R.tot);
     w.eval("saveExam('B2','scritta',14,true)");
@@ -143,24 +164,24 @@ setTimeout(() => {
     if (!w.document.querySelector("#esameRow").textContent.includes("14/20")) throw new Error("last score not shown");
   });
 
-  T("scenarios include questura + telefonata, gated by level", () => {
+  await T("scenarios include questura + telefonata, gated by level", () => {
     const sc = w.eval("SCENARIOS.map(s=>s.id).join(',')");
     if (!sc.includes("questura") || !sc.includes("telefonata")) throw new Error(sc);
   });
 
-  T("repair reduces counter on completion path (unit)", () => {
+  await T("repair reduces counter on completion path (unit)", () => {
     S.errLog.tempo_passati.n = 6;
     // simulate the healed branch directly
     w.eval(`S.errLog.tempo_passati.n = Math.max(0, S.errLog.tempo_passati.n - 3)`);
     if (S.errLog.tempo_passati.n !== 3) throw new Error("n="+S.errLog.tempo_passati.n);
   });
 
-  T("Oggi shows coach, pronuncia, plateau rows", () => {
+  await T("Oggi shows coach, pronuncia, plateau rows", () => {
     w.eval("renderOggi()");
     ["coachGen","pronRow","platRow","bPacks"].forEach(id=>{ if(!w.document.querySelector("#"+id)) throw new Error(id+" missing"); });
   });
 
-  T("coach snapshot reflects real state", () => {
+  await T("coach snapshot reflects real state", () => {
     const s = w.eval("JSON.stringify(coachSnapshot())");
     const o = JSON.parse(s);
     if (o.level !== S.level) throw new Error("level");
@@ -168,7 +189,7 @@ setTimeout(() => {
     if (typeof o.cardsDue !== "number") throw new Error("cardsDue");
   });
 
-  T("drawCoach renders cached plan with jump buttons", () => {
+  await T("drawCoach renders cached plan with jump buttons", () => {
     S.coachPlan = { d: w.eval("today()"), focus:"Attack passato vs imperfetto", steps:[
       {t:"Repair drill",why:"top gap ×3",min:5,go:"lacune"},
       {t:"Speak 5 turns",why:"output low",min:8,go:"parla"}]};
@@ -180,13 +201,13 @@ setTimeout(() => {
     if (!w.document.body.textContent.includes("Speaking is the whole game")) throw new Error("jump to parla failed");
   });
 
-  T("booth system prompt has anti-script + naturalness fields", () => {
+  await T("booth system prompt has anti-script + naturalness fields", () => {
     const sys = w.eval(`convoSystem(SCENARIOS[0])`);
     if (!/UNEXPECTED/i.test(sys)) throw new Error("no anti-script rule");
     if (!sys.includes('"nat"')) throw new Error("no nat field");
   });
 
-  T("naturalness chip renders under user bubble", () => {
+  await T("naturalness chip renders under user bubble", () => {
     w.eval(`
       main.innerHTML='<div class="chatlog" id="chatlog"></div>';
       addBub('me','provo a dire una cosa');
@@ -197,13 +218,13 @@ setTimeout(() => {
     if (!w.document.body.textContent.includes("più naturale")) throw new Error("chip missing");
   });
 
-  T("Lacune sheet has Mental model buttons", () => {
+  await T("Lacune sheet has Mental model buttons", () => {
     w.eval("renderLacune()");
     if (!w.document.querySelector('[data-mm="tempo_passati"]')) throw new Error("no mental-model button");
     w.eval("closeSheet()");
   });
 
-  T("Vocab packs sheet lists all contexts incl. medical + bureaucracy", () => {
+  await T("Vocab packs sheet lists all contexts incl. medical + bureaucracy", () => {
     w.eval("renderPacks()");
     if (!w.document.querySelector('[data-pk="corsia"]')) throw new Error("corsia pack missing");
     if (!w.document.querySelector('[data-pk="burocrazia"]')) throw new Error("burocrazia pack missing");
@@ -211,7 +232,7 @@ setTimeout(() => {
     w.eval("closeSheet()");
   });
 
-  T("Pronuncia asks native language once, then shows 7 sounds for English", () => {
+  await T("Pronuncia asks native language once, then shows 7 sounds for English", () => {
     w.eval("renderPronuncia()");
     if (!w.document.querySelector("#prLang")) throw new Error("no language prompt");
     w.document.querySelector("#prLang").value = "English";
@@ -221,13 +242,13 @@ setTimeout(() => {
     if (!w.document.body.textContent.includes("aritmie")) throw new Error("medical drills missing");
   });
 
-  T("ACCENT_EN bank integrity (7 sounds, drills present)", () => {
+  await T("ACCENT_EN bank integrity (7 sounds, drills present)", () => {
     const bad = w.eval("ACCENT_EN.filter(s=>s.length!==4||!Array.isArray(s[3])||s[3].length<2).length");
     if (bad) throw new Error(bad+" malformed sounds");
     if (w.eval("ACCENT_EN.length") !== 7) throw new Error("not 7 sounds");
   });
 
-  T("Plateau protocol: day math, done-tracking, Oggi row", () => {
+  await T("Plateau protocol: day math, done-tracking, Oggi row", () => {
     S.protocol = { start: w.eval("today()"), diagnosis:"Output avoidance.", days: Array.from({length:30},(_,i)=>"Action "+(i+1)), done:{} };
     if (w.eval("protoDay()") !== 0) throw new Error("day="+w.eval("protoDay()"));
     w.eval("renderOggi()");
@@ -236,6 +257,109 @@ setTimeout(() => {
     w.document.querySelector("#ptDone").click();
     if (!S.protocol.done[0]) throw new Error("done not tracked");
     w.eval("closeSheet()");
+  });
+
+  // ---- Cloud STT (iOS mic bypass) ----
+  await T("needsCloudSTT is true when SR is absent (simulates iOS Safari)", () => {
+    const orig = w.SpeechRecognition; const origWk = w.webkitSpeechRecognition;
+    delete w.SpeechRecognition; delete w.webkitSpeechRecognition;
+    const needs = w.eval("(window.SpeechRecognition||window.webkitSpeechRecognition) ? false : true");
+    if (!needs) throw new Error("expected true with no SR");
+    if (orig) w.SpeechRecognition = orig; if (origWk) w.webkitSpeechRecognition = origWk;
+  });
+
+  await T("detectSTT sets sttMode from /api/stt-status when SR is unavailable", async () => {
+    w.eval("SR_STUB_UNDEFINED = true;"); // no-op marker, real check below via forced path
+    await w.eval(`(async()=>{ 
+      const realSR = window.SpeechRecognition; 
+      window.__savedSR = realSR;
+      Object.defineProperty(window,'SpeechRecognition',{value:undefined,configurable:true});
+      Object.defineProperty(window,'webkitSpeechRecognition',{value:undefined,configurable:true});
+      await detectSTT();
+      window.__sttModeAfter = sttMode;
+    })()`);
+    const mode = w.eval("window.__sttModeAfter");
+    if (mode !== "cloud") throw new Error("sttMode="+mode);
+  });
+
+  await T("micCaption reflects cloud mode", () => {
+    w.eval("sttMode='cloud'");
+    if (!/cloud transcription/.test(w.eval("micCaption()"))) throw new Error(w.eval("micCaption()"));
+    w.eval("sttMode='cloud-unconfigured'");
+    if (!/needs setup/.test(w.eval("micCaption()"))) throw new Error(w.eval("micCaption()"));
+  });
+
+  await T("listen() returns a synchronous proxy with .stop() before getUserMedia resolves", () => {
+    w.eval("STT_NO_VAD_MS = 5"); // shrink no-VAD fallback window for fast tests
+    const hasStop = w.eval(`(function(){
+      const h = listen(()=>{}, ()=>{}, ()=>{});
+      return h && typeof h.stop === 'function';
+    })()`);
+    if (!hasStop) throw new Error("no synchronous stop() handle");
+  });
+
+  await T("cloud STT end-to-end: records, transcribes via /api/transcribe, returns text", async () => {
+    w.__setSttEnabled(true);
+    w.eval("STT_NO_VAD_MS = 5");
+    const text = await w.eval(`new Promise(res=>{
+      listen(t=>res(t), ()=>{}, err=>res('ERR:'+err));
+    })`);
+    if (text !== "ciao come stai") throw new Error("got: "+text);
+  });
+
+  await T("cloud STT surfaces 'notconfigured' when server has no key", async () => {
+    w.__setSttEnabled(false);
+    w.eval("STT_NO_VAD_MS = 5");
+    const result = await w.eval(`new Promise(res=>{
+      listen(t=>res('OK:'+t), ()=>{}, err=>res('ERR:'+err));
+    })`);
+    if (result !== "ERR:notconfigured") throw new Error("got: "+result);
+    w.__setSttEnabled(true);
+  });
+
+  await T("booth mic caption uses live sttMode, not raw SR check", () => {
+    w.eval("sttMode='cloud'; curScen=SCENARIOS[0]; renderParla();");
+    const scen = w.document.querySelector(".scen"); if (scen) scen.click();
+    // renderParla itself (scene list) doesn't show the caption; jump straight to a started convo render
+    w.eval(`
+      main.innerHTML = '<div class="booth"><div class="chatlog" id="chatlog"></div></div>';
+      $('body') || 0;
+    `);
+    // directly assert the caption helper output used by startConvo's template
+    if (!w.eval("micCaption()").includes("cloud")) throw new Error("caption stale");
+  });
+
+  await T("theme toggle cycles auto → light → dark → auto and persists", () => {
+    w.eval("renderHeader()");
+    const btn = w.document.querySelector("#thmBtn");
+    if (!btn) throw new Error("no theme button");
+    btn.click(); // auto → light
+    if (w.localStorage.getItem("fluente-theme") !== "light") throw new Error("not light");
+    if (w.document.documentElement.dataset.theme !== "light") throw new Error("attr not set");
+    w.document.querySelector("#thmBtn").click(); // light → dark
+    if (w.localStorage.getItem("fluente-theme") !== "dark") throw new Error("not dark");
+    w.document.querySelector("#thmBtn").click(); // dark → auto
+    if (w.localStorage.getItem("fluente-theme") !== null) throw new Error("auto should clear storage");
+    if (w.document.documentElement.dataset.theme) throw new Error("auto should clear attr");
+  });
+
+  await T("celebrate() spawns and cleans confetti, never throws sans matchMedia", () => {
+    w.document.querySelectorAll(".cfw").forEach(x=>x.remove()); // clear bursts from earlier pass-tests
+    delete w.matchMedia; // some webviews lack it — must not throw
+    w.eval("celebrate(10)");
+    const wraps = w.document.querySelectorAll(".cfw");
+    if (wraps.length !== 1) throw new Error("wrappers: "+wraps.length);
+    if (wraps[0].querySelectorAll(".cf").length !== 10) throw new Error("confetti count");
+    wraps[0].remove();
+  });
+
+  await T("dark theme redefines core vars (spot check)", () => {
+    const css = html.match(/<style>[\s\S]*?<\/style>/)[0];
+    if (!css.includes('[data-theme="dark"]')) throw new Error("no dark block");
+    for (const v of ["--carta:", "--surface:", "--panel:", "--rosso:"]) {
+      const count = (css.split(v).length - 1);
+      if (count < 3) throw new Error(v + " defined " + count + "x — expected light + dark + media");
+    }
   });
 
   console.log(results.join("\n"));

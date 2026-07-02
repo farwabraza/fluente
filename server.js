@@ -70,6 +70,47 @@ app.post("/api/chat", rateLimit, dailyCap, async (req, res) => {
   }
 });
 
+app.get("/api/stt-status", (req, res) => {
+  res.json({ enabled: !!process.env.TRANSCRIBE_API_KEY });
+});
+
+// ---------- CLOUD TRANSCRIPTION (bypasses iOS Safari's broken on-device speech recognition) ----------
+// The client records raw audio with MediaRecorder (works on iOS 14.3+) and POSTs the blob here.
+// We forward it to a Whisper-compatible endpoint — Groq by default (fast + cheap), or OpenAI.
+function extFor(mime) {
+  const m = String(mime || "").toLowerCase();
+  if (m.includes("mp4") || m.includes("m4a")) return "mp4";
+  if (m.includes("ogg")) return "ogg";
+  if (m.includes("wav")) return "wav";
+  return "webm";
+}
+app.post("/api/transcribe", rateLimit, dailyCap, express.raw({ type: "*/*", limit: "10mb" }), async (req, res) => {
+  const key = process.env.TRANSCRIBE_API_KEY;
+  if (!key) return res.status(503).json({ error: { message: "Voice transcription isn't set up on this server — add TRANSCRIBE_API_KEY (see README)." } });
+  if (!req.body || !req.body.length) return res.status(400).json({ error: { message: "No audio received." } });
+  const base = (process.env.TRANSCRIBE_BASE_URL || "https://api.groq.com/openai/v1").replace(/\/+$/, "");
+  const model = process.env.TRANSCRIBE_MODEL || "whisper-large-v3-turbo";
+  const mime = req.headers["x-audio-mime"] || req.headers["content-type"] || "audio/webm";
+  try {
+    const form = new FormData();
+    form.append("file", new Blob([req.body], { type: mime }), "audio." + extFor(mime));
+    form.append("model", model);
+    form.append("language", "it"); // FLUENTE is Italian-only — pin it, avoids Whisper language misdetection on short clips
+    const r = await fetch(base + "/audio/transcriptions", {
+      method: "POST",
+      headers: { Authorization: "Bearer " + key },
+      body: form,
+    });
+    let data;
+    try { data = await r.json(); }
+    catch (e) { return res.status(502).json({ error: { message: "Transcription service returned an unexpected response (HTTP " + r.status + ") — check TRANSCRIBE_BASE_URL / TRANSCRIBE_API_KEY." } }); }
+    if (!r.ok) return res.status(r.status).json({ error: { message: (data.error && data.error.message) || "Transcription failed." } });
+    res.json({ text: (data.text || "").trim() });
+  } catch (e) {
+    res.status(502).json({ error: { message: "Transcription upstream error: " + e.message } });
+  }
+});
+
 // ---------- ACCOUNTS & CLOUD SYNC (needs DATABASE_URL — see README) ----------
 const crypto = require("crypto");
 let pool = null;

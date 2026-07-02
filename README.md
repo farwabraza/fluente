@@ -8,6 +8,37 @@ with mnemonics, leech rescue, and production-direction recall.
 
 ---
 
+## What's new in v6 — "Milano Editoriale" (the redesign)
+
+A full visual rebuild in Italian editorial modernism — Milan's design heritage (the city that gave the world Vignelli's transit graphics, which this app's metro map already lives in):
+
+- **Typography:** Fraunces (editorial display serif, italic logo) + Hanken Grotesk (UI) + Spline Sans Mono (metro-signage eyebrows).
+- **Paper & light:** warm paper background with a subtle print-grain overlay; hairline borders and layered soft shadows replace the old hard brutalist offsets.
+- **Auto light + dark:** follows your system by default; the ◐ button in the header cycles auto → day → *Notte a Milano* (warm espresso-plum dark, not dead blue-black). Preference persists, applied before first paint (no flash).
+- **Floating glass dock:** the nav is now a detached, blurred, rounded dock with a springy active indicator — safe-area aware on iPhone.
+- **Satisfaction layer:** spring physics on every press, staggered list reveals, shimmer on progress bars, 3D spring card flips, shake/pop on wrong/right answers, haptic buzz + quattro-linee confetti on checkpoint passes, exam passes, and near-perfect Scelta rounds. All of it respects `prefers-reduced-motion`.
+- Every JS-generated inline style swept onto the theme token system — both themes verified variable-by-variable (36 automated checks).
+- Login + cloud sync retained untouched; login screen inherits the new skin automatically.
+
+---
+
+## What's new in v5 — the iOS mic fix
+
+**The problem:** iOS Safari's built-in speech recognition (`webkitSpeechRecognition`) is unreliable-to-absent in PWAs — that's an iOS/Safari limitation, not something fixable client-side. Since this app is speaking-heavy (booth, checkpoints, exam orale, pronuncia drills), that was a real gap on iPhone.
+
+**The fix:** iOS *can* record raw audio fine (`MediaRecorder`, supported since iOS 14.3) — it's only on-device transcription that's broken. So on iPhone the app now: records audio in-browser with silence-detection auto-stop (same feel as native speech recognition), uploads the clip to your server, and transcribes it there with a real Whisper-class model. Android/desktop are untouched — they keep using the free, instant, on-device browser API. Every mic button in the app (booth, checkpoints, lesson speaking, exam orale, pronuncia intelligibility test) uses this transparently — same buttons, same flow, no extra taps.
+
+**Setup (one more secret, same pattern as before):**
+- `TRANSCRIBE_API_KEY` — an API key from **[console.groq.com](https://console.groq.com)** (recommended: free tier, and Whisper transcription there is both very fast and very cheap) or **platform.openai.com** if you prefer OpenAI's Whisper.
+- `TRANSCRIBE_BASE_URL` — optional, defaults to Groq (`https://api.groq.com/openai/v1`). Set to `https://api.openai.com/v1` to use OpenAI instead.
+- `TRANSCRIBE_MODEL` — optional, defaults to `whisper-large-v3-turbo` (Groq's fast model). Use `whisper-1` for OpenAI.
+
+Without `TRANSCRIBE_API_KEY` set, iPhone users simply keep the "type instead" fallback that already existed — nothing breaks, you just don't get the upgrade until you add the key. The mic caption in the booth tells the user honestly which mode they're in.
+
+**Cost:** transcription is billed separately from your Claude usage (a different provider). Groq's Whisper is priced in fractions of a cent per minute of audio — for a language-learning app, a heavy daily user speaking 10 minutes/day costs a small fraction of what the Claude calls already cost. It shares the same `DAILY_AI_LIMIT`-style protection: the existing 30-req/min rate limit applies to `/api/transcribe` too.
+
+---
+
 ## What's new in v4 (the coaching layer)
 
 | Layer | What it does | Where |
@@ -36,27 +67,37 @@ with mnemonics, leech rescue, and production-direction recall.
 
 ---
 
-## 1 · Run it (5 minutes)
+## 1 · Run it — free hosting that's actually free (verified July 2026)
 
-Works on Replit, Render, Railway, Fly — anything that runs Node 18+.
+The app needs a small **Node server** (API-key proxy, iOS transcription, logins) + **Postgres** for cloud sync. The free landscape changed a lot in 2026 — Koyeb closed its free tier to new users after the Mistral acquisition, Fly.io's free tier is gone, Railway is a one-time $5 trial — so here's what genuinely works today:
 
-1. Upload this folder (keep structure: `server.js`, `package.json`, `.replit`, `public/`).
-2. Add the secret / environment variable:
-   - `ANTHROPIC_API_KEY` = `sk-ant-...` (from console.anthropic.com → API Keys)
-3. Run. That's it — the key lives only on the server; the browser never sees it.
+**Database (all options):** [Neon](https://neon.tech) free Postgres — generous, doesn't expire, copy the connection string into `DATABASE_URL`. (Avoid Render's free Postgres: it expires after 30 days.)
 
-Optional env vars:
-- `CLAUDE_MODEL` — defaults to `claude-sonnet-4-5`. Check current names/pricing at https://docs.claude.com
-- `DATABASE_URL` — Postgres connection string (free at neon.tech) → enables username+PIN cloud sync across devices
-- `DAILY_AI_LIMIT` — e.g. `150` → per-IP daily cap on AI calls (0/unset = off)
+**Option A — Render free web service** *(simplest; you're already set up there)*
+Render's free tier still includes web services — you're only charged if the service is on a paid instance type. In the dashboard: your service → Settings → Instance Type → **Free**. Trade-off: it spins down after ~15 min idle and takes ~1 min to wake on the next visit — you said that's acceptable. 750 free instance-hours/month covers one service running 24/7.
+
+**Option B — Northflank free Developer plan** *(free AND always-on)*
+2 services, 1 vCPU, 1 GB RAM, **no cold starts** on the free plan. Requires a credit card on file but costs nothing within the plan. Connect the GitHub repo or use the included `Dockerfile`. Currently the best "free without the wake-up delay" option.
+
+**Option C — Google Cloud Run** *(most generous quota, seconds-not-minutes cold starts)*
+~2M requests/month free. Scale-to-zero like Render, but wake-up is a few **seconds**, not a minute. Deploy with the included `Dockerfile`: `gcloud run deploy fluente --source . --allow-unauthenticated`. Needs a Google billing account on file (stays $0 within free quota).
+
+**Setup on any of them** — add the secrets/environment variables:
+- `ANTHROPIC_API_KEY` = `sk-ant-...` (console.anthropic.com) — required
+- `DATABASE_URL` — Neon connection string → enables logins + cross-device sync
+- `TRANSCRIBE_API_KEY` — free at console.groq.com → enables the iPhone mic
+- Optional: `CLAUDE_MODEL`, `DAILY_AI_LIMIT`, `TRANSCRIBE_BASE_URL`, `TRANSCRIBE_MODEL`
+
+💡 *Keeping Render awake:* a free uptime monitor (e.g. UptimeRobot) pinging your URL every 14 minutes prevents spin-down and fits inside the 750 free hours — a common pattern, though it burns your full monthly allowance on one service.
 
 ## 2 · Publish + install on phone
 
 Deploy for a permanent URL. Then: **iPhone Safari** → Share → Add to Home Screen ·
 **Android Chrome** → ⋮ → Install app. Full-screen PWA, offline shell, red metro F icon.
 
-⚠️ Mic works best in Chrome/Edge; iOS Safari speech recognition is partial — typing in
-the booth is identical and 🔊 always works.
+⚠️ Mic is native/instant on Chrome, Edge & Android. On iPhone/iPad Safari it now
+works too, via server-side transcription — see "What's new in v5" above (needs
+`TRANSCRIBE_API_KEY`). Without that key, iOS falls back to typing; 🔊 always works.
 
 ## 3 · Costs
 
@@ -97,7 +138,7 @@ Postgres you control) and a terms line; if selling to EU consumers, note GDPR ba
 | App (all of it) | `public/index.html` |
 | AI proxy + rate limits + accounts | `server.js` |
 | PWA install/offline | `public/manifest.json`, `public/sw.js` |
-| Headless test suite (26 checks, dev-only) | `smoke.js` — `npm i jsdom --no-save && node smoke.js` |
+| Headless test suite (36 checks, dev-only) | `smoke.js` — `npm i jsdom --no-save && node smoke.js` |
 
 ## 6 · Tinkering map (everything is in index.html)
 
