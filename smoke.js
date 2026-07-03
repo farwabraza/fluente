@@ -362,6 +362,44 @@ setTimeout(async () => {
     }
   });
 
+  await T("GRAMMAR_BOOK integrity: 26 topics, all fields, valid err keys", () => {
+    const bad = w.eval(`GRAMMAR_BOOK.filter(g => !g.id||!g.cat||!g.t||!g.en||!Array.isArray(g.when)||!g.when.length||!g.how||!g.why||!g.trap||!Array.isArray(g.ex)||g.ex.length<2||!ERR_TAX[g.err]).length`);
+    if (bad) throw new Error(bad + " malformed topics");
+    if (w.eval("GRAMMAR_BOOK.length") !== 26) throw new Error("count=" + w.eval("GRAMMAR_BOOK.length"));
+    const ids = w.eval("GRAMMAR_BOOK.map(g=>g.id).join(',')").split(",");
+    if (new Set(ids).size !== ids.length) throw new Error("duplicate ids");
+  });
+
+  await T("Regole tab lists all topics grouped, flags gap-mapped rules", () => {
+    w.eval("S.errLog.tempo_passati = S.errLog.tempo_passati || {n:2,last:Date.now(),ex:[]}; S.errLog.tempo_passati.n = 2;");
+    w.eval("setTab('verbi')");
+    const rows = w.document.querySelectorAll("[data-gram]");
+    if (rows.length !== 26) throw new Error("rows=" + rows.length);
+    if (!w.document.body.textContent.includes("I TEMPI")) throw new Error("no tenses category");
+    if (!w.document.body.textContent.includes("LA STRUTTURA")) throw new Error("no structure category");
+    const flagged = w.document.querySelector('[data-gram="duello"]');
+    if (!flagged.textContent.includes("×2")) throw new Error("gap badge missing");
+    if (!w.document.querySelector("#vbTable")) throw new Error("conjugator lost in rebuild");
+    if (!w.document.querySelector("#vbScelta")) throw new Error("scelta shortcut missing");
+  });
+
+  await T("grammarSheet shows when/how/why/English/trap/examples + drill button", () => {
+    w.eval(`grammarSheet(GRAMMAR_BOOK.find(g=>g.id==='ipotetico'))`);
+    const t = w.document.body.textContent;
+    for (const sec of ["IN ENGLISH","WHEN","HOW","WHY IT MAKES SENSE","THE TRAP","IN THE WILD"]) {
+      if (!t.includes(sec)) throw new Error(sec + " section missing");
+    }
+    if (!t.includes("se sarebbe")) throw new Error("hypothetical trap content missing");
+    if (!w.document.querySelector("#gDrill")) throw new Error("drill button missing");
+    w.eval("closeSheet()");
+  });
+
+  await T("congiuntivo rule sheet embeds the VEDONO triggers", () => {
+    w.eval(`grammarSheet(GRAMMAR_BOOK.find(g=>g.id==='congpres'))`);
+    if (!w.document.body.textContent.includes("VEDONO")) throw new Error("triggers not embedded");
+    w.eval("closeSheet()");
+  });
+
   console.log(results.join("\n"));
   const fails = results.filter(r=>r[0]==="✗").length;
   console.log(fails ? "\n"+fails+" FAILURES" : "\nALL PASS");

@@ -286,7 +286,7 @@ button:focus-visible,.chip:focus-visible,.qopt:focus-visible{outline:3px solid v
     <button data-tab="parla"><span class="ic">🎙</span>PARLA<span class="dot"></span></button>
     <button data-tab="med"><span class="ic">✚</span>MEDICINA<span class="dot"></span></button>
     <button data-tab="cinema"><span class="ic">🎞</span>CINEMA<span class="dot"></span></button>
-    <button data-tab="verbi"><span class="ic">⚙</span>VERBI<span class="dot"></span></button>
+    <button data-tab="verbi"><span class="ic">§</span>REGOLE<span class="dot"></span></button>
     <button data-tab="srs"><span class="ic">⚡</span>RIPASSO<span class="dot"></span></button>
   </nav>
 </div>
@@ -1695,31 +1695,27 @@ let vbVerb='parlare', vbTense='congiuntivo presente';
 function renderVerbi(){
   main.innerHTML = `
   <div class="fadein">
-    <div class="eyebrow r">VERBI · LA SCUOLA DI CONIUGAZIONE</div>
-    <h1 style="margin-bottom:6px">Verbs, finally making sense.</h1>
-    <p class="muted" style="margin-bottom:14px">The secret nobody tells you: the congiuntivo endings are easy. The hard part is spotting <b>when</b> it's triggered. So we'll drill the trigger first, the endings second.</p>
+    <div class="eyebrow r">LA GRAMMATICA · THE RULEBOOK</div>
+    <h1 style="margin-bottom:6px">Every rule. When, how,<br>and why it makes sense.</h1>
+    <p class="muted" style="margin-bottom:14px">Tap any rule for the full story: <b>when</b> to use it, <b>how</b> it's built, <b>why</b> the logic holds, the <b>English equivalent</b>, the classic <b>trap</b> — then drill it. Rules you keep failing (per your gap map) are flagged in red.</p>
+    ${GRAMMAR_CATS.map(cat=>`
+      <div class="eyebrow b" style="margin-top:14px">${esc(cat)}</div>
+      ${GRAMMAR_BOOK.filter(g=>g.cat===cat).map(g=>{
+        const gap=S.errLog[g.err]&&S.errLog[g.err].n>0?S.errLog[g.err].n:0;
+        return `<button class="mission" data-gram="${g.id}" style="${gap?'border-left:5px solid var(--rosso);':''}">
+          <span><b style="font-size:.92rem">${esc(g.t)}</b><br><span class="muted" style="font-size:.76rem">${esc(g.en)}</span></span>
+          <span style="margin-left:auto;display:flex;gap:6px;align-items:center">${gap?`<span class="tag rr">×${gap}</span>`:''}<span class="st-go">APRI</span></span>
+        </button>`;
+      }).join('')}`).join('')}
 
-    <div class="card" style="background:var(--blu);color:#fff;border-color:var(--ink)">
-      <div class="eyebrow" style="color:var(--giallo)">🎯 START HERE · WHY CONGIUNTIVO EXISTS</div>
-      <p style="font-size:.92rem"><b>Indicativo = facts.</b> "So che <u>è</u> medico" — I KNOW he is.<br><b>Congiuntivo = everything unreal:</b> opinions, wishes, doubts, emotions. "Penso che <u>sia</u> medico" — I THINK (but don't know).</p>
-      <p style="font-size:.88rem;margin-top:8px">Italian splits the world into <i>certain</i> vs <i>uncertain</i>, and forces the verb to wear a different coat for each. English mostly stopped doing this — that's why it feels insane. It's not illogical, it's just a rule English dropped.</p>
+    <div class="eyebrow b" style="margin-top:18px">⚙ GLI STRUMENTI · practice tools</div>
+    <div class="row" style="margin-bottom:10px">
+      <button class="btn dark" id="vbDrill" style="flex:1">🎯 Trigger drill<br><span style="font-size:.64rem;font-weight:400">indicativo o congiuntivo?</span></button>
+      <button class="btn yellow" id="vbSprint" style="flex:1">⏱ Verb Sprint<br><span style="font-size:.64rem;font-weight:400">60s conjugation rush</span></button>
+      <button class="btn" id="vbScelta" style="flex:1;background:var(--blu);color:#fff;border-color:transparent">🎯 Scelta<br><span style="font-size:.64rem;font-weight:400">which tense?</span></button>
     </div>
 
-    <div class="mnemo"><div class="eyebrow">🧠 THE MASTER MNEMONIC · "VEDONO"</div>${esc(TRIGGER_MNEMONIC)}</div>
-
-    <div class="eyebrow b">THE 7 TRIGGERS · tap to hear the example</div>
-    ${TRIGGERS.map((t,i)=>`
-      <div class="card flat" style="margin-bottom:8px;border-left:6px solid var(--rosso)">
-        <div style="display:flex;justify-content:space-between;align-items:baseline">
-          <b style="font-size:.95rem">${i+1}. ${esc(t[0])}</b>
-          <button class="btn sm" data-say="${esc(t[2])}" style="box-shadow:none;padding:3px 8px">🔊</button>
-        </div>
-        <div class="muted" style="font-size:.8rem;margin:2px 0 6px"><b>Signals:</b> ${esc(t[1])}</div>
-        <div style="background:var(--surface);border:1px solid var(--line-2);border-radius:8px;padding:6px 10px;font-size:.88rem">${esc(t[2])}</div>
-        <div style="font-size:.78rem;color:var(--verde);font-weight:600;margin-top:5px">→ ${esc(t[3])}</div>
-      </div>`).join('')}
-
-    <div class="eyebrow b" style="margin-top:14px">⚙ THE CONJUGATOR · pick a verb + tense</div>
+    <div class="eyebrow b" style="margin-top:8px">IL CONIUGATORE · any verb, any tense</div>
     <div class="card">
       <div class="row" style="margin-bottom:10px">
         <input class="ti" id="vbInput" value="${vbVerb}" placeholder="any verb e.g. parlare" style="flex:2" autocapitalize="off">
@@ -1746,12 +1742,13 @@ function renderVerbi(){
       <button class="btn yellow" id="vbSprint" style="flex:1">⏱ Verb Sprint<br><span style="font-size:.64rem;font-weight:400">conjugation speed run</span></button>
     </div>
   </div>`;
-  document.querySelectorAll('[data-say]').forEach(b=>b.onclick=()=>speak(b.dataset.say));
+  document.querySelectorAll('[data-gram]').forEach(b=>b.onclick=()=>grammarSheet(GRAMMAR_BOOK.find(g=>g.id===b.dataset.gram)));
   document.querySelectorAll('[data-v]').forEach(b=>b.onclick=()=>{ vbVerb=b.dataset.v; $('#vbInput').value=vbVerb; drawTable(); });
   $('#vbInput').addEventListener('input',e=>{ vbVerb=e.target.value.trim().toLowerCase(); drawTable(); });
   $('#vbTense').addEventListener('change',e=>{ vbTense=e.target.value; drawTable(); });
   $('#vbDrill').onclick=triggerDrill;
   $('#vbSprint').onclick=renderSprint;
+  $('#vbScelta').onclick=renderScelta;
   $('#vbAskGo').onclick=async()=>{
     const q=$('#vbAsk').value.trim(); if(q.length<5){toast('Type your question first');return;}
     $('#vbAskGo').innerHTML='<span class="spinner"></span>'; $('#vbAskGo').disabled=true;
@@ -1787,6 +1784,273 @@ function drawTable(){
     <p class="muted" style="font-size:.76rem;margin-top:6px">${note}</p>
     ${isCong?`<div style="background:var(--giallo);color:var(--on-giallo);border:1px solid var(--line-2);border-radius:8px;padding:7px 10px;font-size:.8rem;margin-top:6px">💡 Notice io/tu/lui are <b>identical</b> in the congiuntivo — that's why Italians add the pronoun ("che <b>io</b> sia") to avoid confusion.</div>`:''}`;
   $('#vbHear').onclick=()=>{ const txt=CONJ.pronouns.map((p,i)=>(isCong?'che '+p:p)+' '+rows[i]).join(', '); speak(txt,0.9); };
+}
+
+
+/* =========================================================
+   LA GRAMMATICA — the hand-written rulebook. Every tense and
+   every "absurd" rule: WHEN to use it, HOW it's built, WHY it
+   makes sense, the English equivalent, and the classic trap.
+   Each rule is drillable and wired into the gap map.
+   [Hand-authored — not AI-generated — for accuracy.]
+========================================================= */
+const GRAMMAR_BOOK = [
+/* ---------- I TEMPI · the tenses ---------- */
+{id:"presente",cat:"I TEMPI",t:"Presente",en:"≈ simple present + present continuous + (with «da») present perfect continuous",
+ when:["Habits & facts: «Lavoro in ospedale»","Right now: «Cosa fai?» (no -ing needed)","Planned near future: «Domani parto»","Ongoing since: «da» + presente — «Vivo qui da 5 anni» = I HAVE BEEN living here"],
+ how:"-o, -i, -a/-e, -iamo, -ate/-ete/-ite, -ano/-ono. The -ire family splits: dormire-type vs capire-type (+isc).",
+ why:"Italian's present is wider than English's: it owns the near future and the entire «since/for» zone. Fewer tenses to juggle, not more.",
+ trap:"«I have lived here for 5 years» is NOT a past tense in Italian → «Vivo qui da 5 anni». Using passato prossimo here means you DON'T live here anymore.",
+ ex:[["Studio medicina da quattro anni.","I have been studying medicine for four years."],["Domani ho il turno di notte.","Tomorrow I have the night shift."]],err:"coniugazione"},
+
+{id:"pprossimo",cat:"I TEMPI",t:"Passato prossimo",en:"covers BOTH English simple past AND present perfect — two for one",
+ when:["Completed one-time events: «Ieri ho visto un film»","Sequences that advance a story: «Sono entrata, ho salutato, ho iniziato il giro»","Bounded durations & counted repeats: «per due ore», «due volte», «tutto il giorno»","Results that matter now: «Ho perso le chiavi» (…and they're still lost)"],
+ how:"presente of avere/essere + past participle (-ato/-uto/-ito). Irregular participles are a hit-list to memorize: fatto, detto, visto, messo, preso, scritto, aperto, morto, nato, rimasto, vissuto.",
+ why:"English splits «I ate» vs «I have eaten»; spoken Italian merged them into one tense. That's one distinction FEWER than English — enjoy it.",
+ trap:"The auxiliary is the real exam: motion/change/reflexives take essere and the participle agrees → «Maria è tornatA», «ci siamo svegliatI».",
+ ex:[["Ho lavorato tutto il weekend.","I worked all weekend."],["Le analisi sono arrivate stamattina.","The test results arrived this morning."]],err:"tempo_passati"},
+
+{id:"imperfetto",cat:"I TEMPI",t:"Imperfetto",en:"≈ used to / would (habits) / was doing — three English constructions in one tense",
+ when:["Past habits: «Da bambina giocavo sempre fuori»","Background & scenery: «Pioveva, la corsia era piena»","Ongoing action that gets interrupted: «Dormivo quando…»","States, age, weather, feelings in the past: «Aveva la febbre», «Avevo vent'anni»","Politeness: «Volevo chiederti una cosa»"],
+ how:"Gloriously regular: stem + -avo/-evo/-ivo. Only essere is irregular (ero, eri, era…).",
+ why:"It's the VIDEO camera; passato prossimo is the PHOTO. English deleted this tense and scattered it across «used to», «would», and «was doing» — Italian keeps it in one place.",
+ trap:"Long ≠ imperfetto! «per due ore» is bounded, so it's «ho aspettato due ore», not «aspettavo due ore».",
+ ex:[["Mentre studiavo, è arrivato un messaggio.","While I was studying, a message arrived."],["Ogni estate andavamo al mare.","Every summer we used to go to the seaside."]],err:"tempo_passati"},
+
+{id:"duello",cat:"I TEMPI",t:"⚔ Passato prossimo vs imperfetto — the duel",en:"English hides this choice inside word choice; Italian forces the verb itself to declare it",
+ when:["Ask: does this ADVANCE the story? → passato prossimo","Is it scenery, habit, or a state the story happens INSIDE? → imperfetto","Classic frame: imperfetto sets the stage, passato prossimo is the event — «DormivO quando HA squillato il telefono»","«mentre» almost always drags imperfetto; a sudden «all'improvviso» almost always drags passato prossimo"],
+ how:"Both tenses in one sentence is normal and beautiful: background in imperfetto, event in passato prossimo.",
+ why:"Every language marks foreground vs background somehow. English uses «was …ing» vs simple past; Italian uses two whole tenses. Same logic, different tool.",
+ trap:"Feelings can go either way and change meaning: «avevo paura» = I was (in a state of) fear · «ho avuto paura» = I got scared (at that moment).",
+ ex:[["C'era il sole e siamo usciti.","It was sunny and we went out."],["Non è venuta perché aveva la febbre.","She didn't come because she had a fever."]],err:"tempo_passati"},
+
+{id:"premoto",cat:"I TEMPI",t:"Passato remoto",en:"≈ English simple past, but only in its «literary narrator» costume",
+ when:["Written narrative, novels, history, fairy tales: «Garibaldi partì da Quarto»","Spoken daily in the South (Sicily, Calabria, parts of the Centre) where the North uses passato prossimo","For you: RECOGNIZE it cold (every novel uses it), produce it only in formal writing/C1+ exams"],
+ how:"-ai/-asti/-ò · -ei/-esti/-é · -ii/-isti/-ì. The irregulars are the famous ones: fu, ebbe, fece, disse, venne, vide, volle, nacque, morì.",
+ why:"Italian keeps a «sealed-off, distant past» register. The North outsourced it to books; the South still speaks it. It's not archaic — it's regional and literary.",
+ trap:"Using it in Milan small talk sounds like you're narrating a fantasy novel. But skipping it means you can't read one.",
+ ex:[["Dante nacque a Firenze nel 1265.","Dante was born in Florence in 1265."],["Quel giorno capii tutto.","That day I understood everything. (narrative)"]],err:"tempo_passati"},
+
+{id:"trapassato",cat:"I TEMPI",t:"Trapassato prossimo",en:"= English past perfect («had done»), a perfect 1:1 — free win",
+ when:["The earlier of two past events: «Quando sono arrivata, il giro era già finito»","After «dopo che», «appena», «perché» explaining a prior cause: «Era stanco perché aveva lavorato di notte»"],
+ how:"imperfetto of avere/essere + participle: avevo fatto, ero andata. Same essere/avere rules as always.",
+ why:"Identical logic to English «had done». One of the few places the two languages agree completely — anchor it and move on.",
+ trap:"English often skips it casually («After I ate, I left»); Italian likes it explicit: «Dopo che avevo mangiato, sono uscita».",
+ ex:[["Il paziente aveva già preso l'antibiotico.","The patient had already taken the antibiotic."],["Non avevo mai visto niente di simile.","I had never seen anything like it."]],err:"tempo_passati"},
+
+{id:"futuro",cat:"I TEMPI",t:"Futuro semplice",en:"≈ will — plus a «guessing» power English doesn't have a tense for",
+ when:["Predictions & promises: «Ti chiamerò»","GUESSING (futuro epistemico): «Saranno le tre» = it must be about 3 · «Dove sarà?» = where can he be?","After quando/appena/se about the future — DOUBLE future: «Quando arriverò, ti chiamerò» (English says «when I arrive»!)","Everyday planned stuff prefers the presente: «Domani parto»"],
+ how:"infinitive minus -e + -ò/-ai/-à/-emo/-ete/-anno. -are flips to -er: parlare → parlERÒ. Irregulars shorten: andrò, avrò, sarò, farò, potrò, vorrò, verrò.",
+ why:"The guessing use is the gem: Italian recycles «future» to mean «my best estimate». English needs «must be / probably» — Italian just changes the tense.",
+ trap:"«When I arrive, I'll call you» → BOTH verbs future in Italian. Presente after quando about the future is the classic anglophone tell.",
+ ex:[["Quanti anni ha? Avrà cinquant'anni.","How old is he? He must be about fifty."],["Appena saprò qualcosa, ti scriverò.","As soon as I know something, I'll write to you."]],err:"futuro"},
+
+{id:"futant",cat:"I TEMPI",t:"Futuro anteriore",en:"= will have done — plus «guessing about the past»",
+ when:["Future-before-future: «Quando avrò finito il turno, ti chiamo»","Guessing about the PAST: «Avrà avuto trent'anni» = he must have been about thirty · «Sarà uscita» = she's probably gone out"],
+ how:"futuro of avere/essere + participle: avrò fatto, sarò andata.",
+ why:"Same recycling trick as the futuro semplice, aimed backwards: «future perfect» form, «past probability» meaning.",
+ trap:"Hearing «Avrà perso il treno» and translating it as future is the mistake — it means «he's probably missed the train».",
+ ex:[["Sarà già arrivata a casa.","She's probably already home."],["Quando avrai letto il referto, chiamami.","When you've read the report, call me."]],err:"futuro"},
+
+{id:"condpres",cat:"I TEMPI",t:"Condizionale presente",en:"≈ would — plus journalism's «allegedly»",
+ when:["Hypotheticals: «Con più tempo, leggerei di più»","Politeness — the survival use: «Vorrei un'informazione», «Potrebbe ripetere?»","Advice: «Dovresti riposarti»","Hearsay in news (condizionale di dissociazione): «Il ministro sarebbe coinvolto» = is ALLEGEDLY involved"],
+ how:"same stem as the futuro + -ei/-esti/-ebbe/-emmo/-este/-ebbero: parlerei, vorrei, sarei, avrei.",
+ why:"It marks distance from reality — desire, courtesy, or unverified claims. English «would» covers the first two; the hearsay use maps to «reportedly».",
+ trap:"«Voglio un caffè» to a barista is grammatical but blunt; «vorrei» is the difference between ordering and demanding.",
+ ex:[["Mi piacerebbe lavorare in cardiologia.","I would like to work in cardiology."],["Secondo la stampa, l'azienda avrebbe nascosto i dati.","According to the press, the company allegedly hid the data."]],err:"condizionale"},
+
+{id:"condpass",cat:"I TEMPI",t:"Condizionale passato",en:"= would have — PLUS the future-in-the-past, where Italian and English split",
+ when:["Missed hypotheticals: «Sarei venuta, ma avevo il turno»","THE BIG ONE — future in the past: «Ha detto che SAREBBE VENUTO» = he said he WOULD come. English uses would; Italian uses the conditional PAST","Past hearsay: «L'incidente sarebbe avvenuto alle tre»"],
+ how:"condizionale of avere/essere + participle: avrei fatto, sarei andata.",
+ why:"For reported speech Italian asks: did the promised event already play out from TODAY's viewpoint? That's «past» flavored — so it stamps the conditional with passato.",
+ trap:"«He said he would call» → «Ha detto che avrebbe chiamato», NEVER «che chiamerebbe». This single rule fixes half of reported speech.",
+ ex:[["Sapevo che avresti capito.","I knew you would understand."],["Senza di te non ce l'avrei fatta.","Without you I wouldn't have made it."]],err:"condizionale"},
+
+{id:"congpres",cat:"I TEMPI",t:"Congiuntivo presente & passato",en:"English had it too — «I suggest he BE on time», «so be it» — it just decayed; Italian's is alive",
+ when:["Triggered by VEDONO after «che»: Volontà (voglio che), Emozioni (mi dispiace che), Dubbio/opinione (penso che), Ordini impersonali (bisogna che), Negazioni (non credo che), Ottativo/augurio (spero che)","Conjunctions that ALWAYS trigger it: benché, sebbene, affinché, purché, a meno che, prima che, senza che","After superlatives + che: «il migliore che io conosca»","NOT after: secondo me, forse, anche se, dopo che, sicuramente — those stay indicativo"],
+ how:"presente: -i,-i,-i,-iamo,-iate,-ino (-are) / -a,-a,-a,-iamo,-iate,-ano (others). sia, abbia, faccia, vada, possa. Passato: abbia/sia + participle.",
+ why:"It's a reality-stamp: indicativo marks facts, congiuntivo marks mental content — wishes, doubts, opinions. Italian forces the verb to declare «this lives in a head, not in the world».",
+ trap:"io/tu/lui are IDENTICAL — that's why Italians add the pronoun: «che IO sia». And «secondo me È» (no che, no congiuntivo) — the trap that catches natives too.",
+ ex:[["Penso che tu abbia ragione.","I think you're right."],["È importante che il paziente resti a digiuno.","It's important that the patient stay fasting. (English subjunctive too!)"]],err:"congiuntivo_quando"},
+
+{id:"congimp",cat:"I TEMPI",t:"Congiuntivo imperfetto & trapassato",en:"«if I WERE you» is the fossilized English cousin of this whole tense",
+ when:["Same VEDONO triggers, but launched from a PAST or CONDITIONAL verb: «Pensavo che FOSSE più tardi», «Vorrei che tu VENISSI»","Hypotheticals with se: «Se AVESSI tempo…» (see periodo ipotetico)","Trapassato for the layer before: «Non sapevo che AVESSE già firmato»"],
+ how:"-assi/-essi/-issi: parlassi, credessi, dormissi. The celebrities: fossi, avessi, facessi, dessi, stessi.",
+ why:"Tense harmony: the mood matches the trigger, the time matches the timeline. Present trigger → congiuntivo presente; past trigger → congiuntivo imperfetto. It's a grid, not chaos.",
+ trap:"«Vorrei che tu VENGA» is the most common learner error — conditional triggers demand the IMPERFETTO: «Vorrei che tu venissi».",
+ ex:[["Speravo che l'esame fosse più facile.","I was hoping the exam would be easier."],["Magari fosse vero!","If only it were true!"]],err:"congiuntivo_forma"},
+
+{id:"ipotetico",cat:"I TEMPI",t:"Il periodo ipotetico — if-sentences",en:"maps almost 1:1 onto English conditionals — anchor it there and it stops being scary",
+ when:["Type 1 · REALTÀ: se + indicativo → indicativo. «Se piove, resto a casa» = If it rains, I stay (zero/1st conditional)","Type 2 · POSSIBILITÀ: se + cong. imperfetto → condizionale presente. «Se piovesse, resterei» = If it rained, I would stay (2nd)","Type 3 · IRREALTÀ: se + cong. trapassato → condizionale passato. «Se fosse piovuto, sarei restata» = If it had rained, I would have stayed (3rd)"],
+ how:"Memorize the three pairs as units. Spoken Italian sometimes flattens type 3 to double imperfetto («Se lo sapevo, venivo») — understand it, don't imitate it in exams.",
+ why:"This is the one corner of the congiuntivo where English kept the same architecture. Your English instincts are actually CORRECT here — rare gift, use it.",
+ trap:"NEVER conditional after se: «se sarebbe» doesn't exist — it's the error Italian teachers mock. Se takes indicativo or congiuntivo, full stop.",
+ ex:[["Se avessi studiato, avrei passato l'esame.","If I had studied, I would have passed the exam."],["Se hai tempo, chiamami.","If you have time, call me."]],err:"condizionale"},
+
+{id:"imperativo",cat:"I TEMPI",t:"Imperativo",en:"English just uses the bare verb; Italian politeness borrows the congiuntivo",
+ when:["Direct commands (tu/voi): «Dimmi!», «Aspettate!»","NEGATIVE tu = non + INFINITIVE: «Non andare!», «Non ti preoccupare!»","Formal Lei borrows congiuntivo forms: «Mi dica», «Si accomodi», «Scusi»","Pronouns ATTACH to tu/voi forms: dammi, dimmelo, alzati — but go BEFORE Lei forms: «mi dica»"],
+ how:"tu forms: -a for -are (parla!), -i for others (prendi!, senti!). The apostrophe five: da', fa', va', sta', di' — which double the pronoun: dammi, fammi, vacci, dimmi.",
+ why:"Softening commands with the subjunctive is old European politeness («so HELP you God»). Lei-commands are literally wishes: «che Lei mi dica» with the che dropped.",
+ trap:"«Non dire!» not «non di'!» — negative tu-commands always flip to the infinitive. And «Mi dica» vs «dimmi» tells the listener instantly how formal you're being.",
+ ex:[["Prenda questa ricetta e si riposi.","Take this prescription and rest. (formal)"],["Non dimenticare le analisi!","Don't forget the tests!"]],err:"coniugazione"},
+
+{id:"gerundio",cat:"I TEMPI",t:"Gerundio & the progressive",en:"English overuses -ing; Italian's presente usually already covers it",
+ when:["stare + gerundio ONLY for right-now emphasis: «Sto arrivando!»","«by doing»: «Sbagliando si impara» = one learns BY making mistakes","«while doing»: «Guidando, ascolto podcast»"],
+ how:"-ando (-are) / -endo (-ere, -ire): parlando, leggendo, dormendo. Irregular stems: facendo, dicendo, bevendo.",
+ why:"English made -ing do five jobs; Italian gives most of those jobs to the presente or the infinitive, saving the gerundio for manner and simultaneity.",
+ trap:"NEVER gerund as a subject: «Smoking is bad» = «FUMARE fa male» — infinitive, always. «Fumando fa male» is word salad.",
+ ex:[["Sto studiando per l'esame di stato.","I'm studying for the state exam (right now)."],["Leggere in italiano migliora tutto.","Reading in Italian improves everything. (infinitive as subject!)"]],err:"ordine_parole"},
+
+/* ---------- LA STRUTTURA · the machinery ---------- */
+{id:"ausiliari",cat:"LA STRUTTURA",t:"Essere o avere? + participle agreement",en:"English had this too — «he is come», «the hour is arrived» (Shakespeare, the King James Bible) — then dropped it. Italian kept it",
+ when:["AVERE: verbs with a direct object, and most others: «ho mangiato», «ho dormito», «ho camminato» (motion-ish but takes avere!)","ESSERE: motion/change-of-state (andare, venire, tornare, arrivare, partire, nascere, morire, diventare, rimanere, uscire, entrare, salire, scendere, cadere), ALL reflexives, piacere-family, weather","With essere the participle AGREES: «Maria è tornatA», «i ragazzi sono uscitI»","Dual verbs shift by meaning: «ho corso per un'ora» vs «sono corsa a casa» (destination → essere)"],
+ how:"When unsure: does the subject UNDERGO the change/motion? → essere. Does it ACT on something? → avere.",
+ why:"Old English worked identically. Italian preserves the logic English abandoned: «to be» for becoming/going, «to have» for doing.",
+ trap:"camminare, viaggiare, nuotare, passeggiare = avere (activity, no destination). Add a destination and the essere verbs take over: «sono andata a piedi».",
+ ex:[["Siamo rimasti in reparto fino alle otto.","We stayed on the ward until eight."],["Ho camminato tutto il giorno.","I walked all day."]],err:"ausiliare"},
+
+{id:"concordanza",cat:"LA STRUTTURA",t:"Concordanza — the agreement chain",en:"English only inflects «this/these»; Italian inflects the whole sentence",
+ when:["Article + noun + adjective all match in gender AND number: «le analisi clinichE», «un problema serIO»","Adjectives default AFTER the noun; a few common ones float before (bello, buono, grande, piccolo, vecchio, nuovo)","Booby-trapped nouns: il problemA/i problemI (masc!), la manO/le manI (fem!), il braccio/LE bracciA, l'uovo/LE uovA"],
+ how:"-o→-i, -a→-e, -e→-i. Adjectives in -e have only two forms: grande/grandi for both genders.",
+ why:"Redundancy is a feature: agreement lets Italians drop pronouns and scramble word order without losing track of who's what. The endings carry the map.",
+ trap:"Greek-origin -ma words are masculine: il problema, il sistema, il programma, il trauma, il diploma. «La problema» is the instant foreigner-detector.",
+ ex:[["Ho le mani fredde.","My hands are cold."],["È un sistema complicato ma logico.","It's a complicated but logical system."]],err:"concordanza"},
+
+{id:"pronomi",cat:"LA STRUTTURA",t:"Pronomi — mi, ti, lo, gli & the combos",en:"English keeps pronouns after the verb; Italian vacuums them to the front",
+ when:["Direct (lo/la/li/le): «Lo vedo» = I see him/it","Indirect (gli/le → to him/to her): «Le ho scritto» = I wrote to her","COMBINED, indirect first, i→e: me lo, te la, GLIELO (=to him/her it): «Glielo dico io»","Attach to infinitives/imperatives: «devo dirTElo», «dammELO»","Participle agrees with lo/la/li/le: «la pizza? L'ho mangiatA»"],
+ how:"Order mantra: indirect before direct, both before the conjugated verb. gli+lo fuses to glielo (one word).",
+ why:"Italian pronouns are clitics — unstressed particles that lean on the verb. Fronting them keeps the sentence's rhythm; the agreement keeps the reference trackable.",
+ trap:"«gli» = to him AND (spoken) to them; «le» = to her. Mixing up «Le ho detto» (I told her) and «L'ho detta» is a real meaning change, not a typo.",
+ ex:[["Il referto? Te lo mando subito.","The report? I'll send it to you right away."],["Queste scarpe? Le ho comprate a Milano.","These shoes? I bought them in Milan."]],err:"pronomi"},
+
+{id:"cine",cat:"LA STRUTTURA",t:"Ci & ne — the two little aliens",en:"no true English equivalent — the closest are «there» and «of it/them», except Italian makes them MANDATORY",
+ when:["CI = there / about it: «Ci vado domani» (I'm going THERE), «Ci penso io» (I'll think ABOUT IT / handle it)","NE = of it, of them, from there: «Quanti caffè bevi?» «NE bevo due» (I drink two OF THEM)","NE is REQUIRED with quantities: you can't answer «bevo due» — the ne must be there","Idioms run on them: «Non ce la faccio più», «Me ne vado», «Che ne pensi?»"],
+ how:"Same clitic position as other pronouns: before the verb, or attached to infinitives (pensarci, andarsene).",
+ why:"Italian refuses dangling references. English tolerates «I'll have two [ehm, of those]»; Italian grammaticalizes the [of those] into a particle. It's bookkeeping, not decoration.",
+ trap:"Answering «Quanti figli hai?» with «Ho due» is broken; «Ne ho due» is the only grammatical option. This one word instantly upgrades how native you sound.",
+ ex:[["Ci sono già stata due volte.","I've already been there twice."],["Parliamone domani.","Let's talk about it tomorrow."]],err:"pronomi"},
+
+{id:"articoli",cat:"LA STRUTTURA",t:"Articoli — il, lo, la & when English goes bare",en:"English generalizes bare («Life is short»); Italian articles everything («LA vita è breve»)",
+ when:["Generalizations take the article: «Il caffè fa bene», «La medicina è dura»","Possessives take it too: «IL mio turno», «LA tua idea» — EXCEPT singular unmodified family: «mia madre» (but «LA mia mamma», «LE mie sorelle»)","Languages, dates, times, titles: «l'italiano», «IL 3 luglio», «LE otto», «il dottor Rossi» (but drop it speaking TO them: «Dottor Rossi!»)","LO before s+consonant, z, gn, ps, y: lo studente, lo zaino, lo psicologo → plural GLI"],
+ how:"il/i · lo,l'/gli · la,l'/le. Prepositions fuse with them: see preposizioni articolate.",
+ why:"The Italian article is a classifier, not just a pointer — it flags gender/number so the agreement chain has an anchor. Dropping it English-style breaks the chain.",
+ trap:"«Vita è bella» sounds like a caveman; «LA vita è bella» is the film. When English drops the article for a generalization, Italian almost always wants it.",
+ ex:[["Lo stress peggiora tutto.","Stress makes everything worse."],["Mia sorella vive a Londra.","My sister lives in London."]],err:"articoli"},
+
+{id:"preposizioni",cat:"LA STRUTTURA",t:"Preposizioni — a, in, da, di, per (+ articolate)",en:"«da» is the alien: English splits it across at / since / from / by / for",
+ when:["A: cities («a Milano»), «a casa», indirect objects, «alle otto»","IN: countries/regions («in Italia»), rooms & workplaces («in ufficio, in reparto»), transport («in treno»)","DA — the shapeshifter: sb's place («dal medico» = at/to the doctor's), since/for («da tre anni»), agent («scritto da»), purpose («occhiali da sole»), origin («vengo da Padova»)","DI: possession («di Marco»), material, topic («parliamo di»), origin-city with essere («sono di Milano»)","Fused forms are mandatory: in+il=nel, su+il=sul, da+il=dal, di+il=del, a+il=al"],
+ how:"Learn them as collocations, not translations — «dipende DA», «innamorarsi DI», «pensare A».",
+ why:"Prepositions are the least logical part of ANY language (English «on Monday, in May, at night» — explain that). Italian isn't worse; it's just differently arbitrary. Collocation memory beats rules here.",
+ trap:"«Vado DAL medico» not «al medico's» — people-as-places take da. And «da tre anni» + PRESENTE (see presente): the trio that fixes «I've been here since».",
+ ex:[["Domani vado dal dentista.","Tomorrow I'm going to the dentist's."],["Studio qui dal 2021.","I've been studying here since 2021."]],err:"preposizioni"},
+
+{id:"piacere",cat:"LA STRUTTURA",t:"Piacere & the backwards verbs",en:"English flipped these centuries ago («methinks»); Italian kept the medieval word order",
+ when:["The THING is the subject; you are the indirect object: «Mi piace il caffè» = coffee is-pleasing to-me","Plural thing → plural verb: «Mi piaccionO i libri»","Same family: mancare (to be missing), servire (to be needed), bastare (to be enough), interessare, sembrare","Past uses ESSERE + agreement: «Mi è piaciutA la lezione»"],
+ how:"Template: [a me/mi] + piace/piacciono + [subject]. Emphasis version: «A me piace» (as for ME, I like it).",
+ why:"Italian states where the feeling LANDS, not who performs it — «it pleases me» is arguably more honest physics than «I like it». English used to agree: «methinks», «it pleases me».",
+ trap:"«Mi manchi» = I miss YOU (you are-missing to-me) — the direction reverses and hearts get broken over this. «Ti manco?» = do you miss me?",
+ ex:[["Ti piacciono gli gnocchi?","Do you like gnocchi?"],["Mi mancano i miei amici.","I miss my friends."]],err:"pronomi"},
+
+{id:"si",cat:"LA STRUTTURA",t:"Si impersonale & si passivante",en:"≈ English generic «you/one/people» or a light passive",
+ when:["Impersonale (one/people): «In Italia SI mangia tardi» = people eat late","Passivante (verb agrees with the noun): «SI vendONO case» = houses for sale, «SI parla italiano»","Signs & ads live on it: «Si affitta», «Si cercano infermieri»"],
+ how:"si + 3rd person verb; with a plural noun the verb goes plural. Compound tenses take essere: «si è mangiato bene».",
+ why:"It's the anonymous subject. English rotates between «you», «one», «they», «people»; Italian standardized a single particle for all of them.",
+ trap:"With a plural object the verb MUST agree: «si vende case» is the shop-sign error; «si vendono case» is correct.",
+ ex:[["Qui si lavora troppo.","People work too much here."],["Come si dice “ward round” in italiano?","How do you say “ward round” in Italian?"]],err:"ordine_parole"},
+
+{id:"negazione",cat:"LA STRUTTURA",t:"Negazione & word order",en:"English BANS double negatives; Italian REQUIRES them",
+ when:["Double negatives are correct: «Non ho visto NESSUNO», «Non fa NIENTE», «Non ci vado MAI»","niente/nessuno/mai after the verb need «non» before it; at the START of the sentence they drop it: «Nessuno lo sa»","Questions are pure intonation: «Vieni?» — no do-support, no inversion","Adjective position changes MEANING: «un VECCHIO amico» = a long-time friend · «un amico VECCHIO» = an elderly friend; «un GRANDE uomo» = a great man · «un uomo GRANDE» = a big man"],
+ how:"Non goes immediately before the verb (and before object clitics: «non LO so»).",
+ why:"Italian negation is concord, not math: all the negative words vote together for one negative meaning. English logic-policing («two negatives make a positive») is the historical oddball.",
+ trap:"Suppressing the second negative («Ho visto nessuno») is ungrammatical. Lean in: pile the negatives, it's correct AND satisfying.",
+ ex:[["Non ho mai detto niente a nessuno.","I never said anything to anyone. (triple!)"],["È un buon amico e un amico buono.","He's a good friend — and a kind one."]],err:"ordine_parole"},
+
+{id:"comparativi",cat:"LA STRUTTURA",t:"Comparativi & superlativi",en:"English -er/-est fused into «più»; the only trap is di vs che",
+ when:["più/meno + DI before nouns, pronouns, numbers: «più alto DI Marco»","più/meno + CHE before adjectives, verbs, prepositions, or comparing two qualities: «più intelligente CHE bello», «meglio tardi CHE mai»","Relative superlative: «IL più bravo DEL reparto»","Absolute superlative: -issimo — «buonissimo», or raddoppio: «piano piano»"],
+ how:"Irregular set worth owning: buono→migliore, cattivo→peggiore, bene→meglio, male→peggio, grande→maggiore, piccolo→minore.",
+ why:"One word (più) replaced the whole English -er/more machinery. The di/che split is positional: di compares THINGS, che compares everything else.",
+ trap:"«bene» vs «buono»: «Questo caffè è BUONO» (adjective) but «Sto BENE» (adverb) — and their comparatives split the same way: migliore vs meglio.",
+ ex:[["Il turno di notte è peggio di quello di giorno.","The night shift is worse than the day one."],["È più facile a dirsi che a farsi.","Easier said than done."]],err:"concordanza"},
+
+{id:"relativi",cat:"LA STRUTTURA",t:"Pronomi relativi — che, cui, il quale",en:"«che» = that/who/which all-in-one; «cui» only exists after prepositions",
+ when:["CHE covers subject and object: «il paziente CHE ho visitato», «la dottoressa CHE lavora qui»","After ANY preposition, che becomes CUI: «la ragazza CON CUI esco», «il motivo PER CUI sono qui»","«il/la cui» = whose: «il paziente il cui referto…»","«il quale/la quale» is the formal, unambiguous backup — bureaucratic writing loves it"],
+ how:"Rule of thumb: no preposition → che; preposition → cui; formal PEC → il quale.",
+ why:"English merged who/whom/which/that chaotically; Italian's split is cleaner — one word for bare links, one for prepositional links.",
+ trap:"«la persona che parlo con» is English word order wearing an Italian costume. The preposition moves forward and che becomes cui: «la persona con cui parlo».",
+ ex:[["L'ospedale in cui lavoro è enorme.","The hospital I work in is huge."],["È l'unico motivo per cui resto.","It's the only reason I'm staying."]],err:"ordine_parole"}
+];
+const GRAMMAR_CATS = [...new Set(GRAMMAR_BOOK.map(g=>g.cat))];
+
+/* ----- The rule sheet: when / how / why / ≈English / trap / examples / drill ----- */
+function grammarSheet(g){
+  const gap=S.errLog[g.err]&&S.errLog[g.err].n>0?S.errLog[g.err].n:0;
+  const vedono = g.id==='congpres' ? `
+    <div class="mnemo"><div class="eyebrow">🧠 THE MASTER MNEMONIC · "VEDONO"</div>${esc(TRIGGER_MNEMONIC)}</div>
+    ${TRIGGERS.map((t,i)=>`
+      <div class="card flat" style="margin-bottom:8px;border-left:5px solid var(--rosso)">
+        <div style="display:flex;justify-content:space-between;align-items:baseline">
+          <b style="font-size:.9rem">${i+1}. ${esc(t[0])}</b>
+          <button class="btn sm" data-say="${esc(t[2])}" style="box-shadow:none;padding:3px 8px">🔊</button>
+        </div>
+        <div class="muted" style="font-size:.78rem;margin:2px 0 5px"><b>Signals:</b> ${esc(t[1])}</div>
+        <div style="background:var(--surface);border:1px solid var(--line-2);border-radius:8px;padding:6px 10px;font-size:.86rem">${esc(t[2])}</div>
+      </div>`).join('')}` : '';
+  showSheet(`<div class="eyebrow r">${esc(g.cat)} · ${esc(g.t).toUpperCase()}</div>`,`
+    ${gap?`<div class="card" style="border-left:5px solid var(--rosso);padding:10px 14px"><b>🗺 This is one of your gaps</b> — tagged ×${gap} in your error map. Clearing the drill below reduces it.</div>`:''}
+    <div class="card" style="background:var(--panel);color:var(--panel-tx)">
+      <div class="eyebrow" style="color:var(--giallo)">≈ IN ENGLISH</div>
+      <p style="font-size:.92rem">${esc(g.en)}</p>
+    </div>
+    <div class="eyebrow g">✅ WHEN — the actual triggers</div>
+    ${g.when.map(w=>`<div class="card flat" style="margin-bottom:6px;padding:10px 14px;font-size:.88rem">${esc(w)}</div>`).join('')}
+    <div class="eyebrow b" style="margin-top:12px">🔧 HOW — the machinery</div>
+    <div class="card flat" style="font-size:.88rem">${esc(g.how)}</div>
+    <div class="eyebrow" style="margin-top:12px;color:var(--blu)">🧩 WHY IT MAKES SENSE</div>
+    <div class="card flat" style="font-size:.88rem;font-style:italic">${esc(g.why)}</div>
+    <div class="eyebrow r" style="margin-top:12px">⚠ THE TRAP</div>
+    <div class="card flat" style="border-left:5px solid var(--giallo);font-size:.88rem">${esc(g.trap)}</div>
+    <div class="eyebrow" style="margin-top:12px">📎 IN THE WILD</div>
+    ${g.ex.map(e=>`<div class="card flat" style="margin-bottom:6px;padding:10px 14px">
+      <b style="font-size:.9rem">${esc(e[0])}</b> <button class="btn sm" data-say="${esc(e[0])}" style="box-shadow:none;padding:2px 8px">🔊</button>
+      <div class="muted" style="font-size:.8rem">${esc(e[1])}</div></div>`).join('')}
+    ${vedono}
+    <button class="btn primary block" id="gDrill" style="margin-top:12px">Drill this rule → (5 questions)</button>`);
+  document.querySelectorAll('.sheet [data-say]').forEach(b=>b.onclick=()=>speak(b.dataset.say));
+  $('#gDrill').onclick=()=>grammarDrill(g);
+}
+
+async function grammarDrill(g){
+  sheetBody('<div style="text-align:center;padding:40px 0"><span class="spinner"></span><p class="muted" style="margin-top:8px">Building a drill on: '+esc(g.t)+'…</p></div>');
+  const set=await ai([{role:'user',content:`Italian grammar drill for a ${S.level} learner on the rule: "${g.t}". The rule's core: WHEN ${g.when.join(' · ')} | TRAP: ${g.trap}. Their known weak examples: ${JSON.stringify((S.errLog[g.err]||{}).ex||[])}.
+Generate 5 two-option fill-in items testing EXACTLY this rule, at least one built on the trap. Respond ONLY with JSON:
+{"items":[{"s":"sentence with ___","o":["option A","option B"],"a":0,"w":"max 14-word why, in terms of the rule"}]}`}],'Meticulous Italian grammar drill author. Both options must be real forms; only one fits the context. JSON only.',true,2200);
+  if(!set||!set.items){ sheetBody('<div class="card">⚠ Couldn\'t build — reopen and retry.</div>'); return; }
+  let i=0, correct=0;
+  function show(){
+    if(i>=set.items.length){
+      const won=correct>=4;
+      if(won && S.errLog[g.err]) S.errLog[g.err].n=Math.max(0,S.errLog[g.err].n-2);
+      gainXP(15); touchStreak(); save(); if(won&&correct===set.items.length) celebrate(24);
+      sheetBody(`<div style="text-align:center;padding:20px 0"><div style="font-size:3rem">${won?'📖':'📚'}</div><h1>${correct}/${set.items.length}</h1><p class="muted">${won?'Rule installing. Gap counter reduced.':'Reread the WHEN and the TRAP — then run it again.'} +15 XP</p><button class="btn primary block" id="gDone" style="margin-top:14px">Back to the rule →</button></div>`);
+      $('#gDone').onclick=()=>grammarSheet(g); return;
+    }
+    const it=set.items[i];
+    sheetBody(`
+      <div class="eyebrow b">${esc(g.t).toUpperCase()} · ${i+1}/${set.items.length}</div>
+      <div class="card"><h2 style="font-size:1.1rem">${esc(it.s)}</h2></div>
+      ${it.o.map((o,k)=>`<button class="qopt" data-k="${k}">${esc(o)}</button>`).join('')}
+      <div id="gFb"></div>`);
+    document.querySelectorAll('.sheet .qopt').forEach(b=>b.onclick=()=>{
+      const k=+b.dataset.k;
+      document.querySelectorAll('.sheet .qopt').forEach(x=>x.disabled=true);
+      if(k===it.a){b.classList.add('right');correct++;}
+      else{b.classList.add('wrong');document.querySelectorAll('.sheet .qopt')[it.a].classList.add('right');
+        logErr(g.err, it.s.replace('___',it.o[k]), it.s.replace('___',it.o[it.a]), 'grammatica');}
+      $('#gFb').innerHTML=`<div class="mnemo" style="margin-top:10px"><b>${k===it.a?'✓':'✗'} </b>${esc(it.w)}</div><button class="btn dark block" id="gN">${i<set.items.length-1?'Next →':'Result →'}</button>`;
+      $('#gN').onclick=()=>{i++;show();};
+    });
+  }
+  show();
 }
 
 /* ----- Trigger drill: the actual skill — spot indicativo vs congiuntivo ----- */
@@ -2112,7 +2376,7 @@ async function coachPlan(force){
   if(!force && S.coachPlan && S.coachPlan.d===today()){ drawCoach(); return; }
   box.innerHTML='<div class="card" style="text-align:center"><span class="spinner"></span><p class="muted" style="margin-top:8px">Il coach studia i tuoi dati…</p></div>';
   const res=await ai([{role:'user',content:`You are a polyglot coach who takes adults to conversational fluency fast. Learner data (real, from their app): ${JSON.stringify(coachSnapshot())}.
-Prescribe EXACTLY what to do today — specific, sequenced, ~20 min total, attacking their weakest point first. Available activities (use these keys only): linea (grammar micro-lesson), parla (speaking booth), srs (flashcard review), scrivi (corrected writing), dettato (dictation), sprint (conjugation speed), scelta (tense-choice drill), esame (exam simulation), lacune (gap repair drill), pronuncia (accent drills), packs (context vocabulary), cinema (prescribed watching), med (medical Italian).
+Prescribe EXACTLY what to do today — specific, sequenced, ~20 min total, attacking their weakest point first. Available activities (use these keys only): linea (grammar micro-lesson), parla (speaking booth), srs (flashcard review), scrivi (corrected writing), dettato (dictation), sprint (conjugation speed), scelta (tense-choice drill), esame (exam simulation), lacune (gap repair drill), pronuncia (accent drills), packs (context vocabulary), verbi (grammar rulebook: every tense + rule explained and drilled), cinema (prescribed watching), med (medical Italian).
 Respond ONLY with JSON: {"focus":"today's one-line theme, direct and specific to THEIR data","steps":[{"t":"imperative task title, specific (e.g. 'Repair passato vs imperfetto — 5 sentences')","why":"max 10 words tying it to their data","min":minutes,"go":"activity key"} x4]}`}],'Elite, direct language coach. No fluff. JSON only.',true,1500);
   if(!res||!res.steps){ box.innerHTML='<div class="card">⚠ Coach unreachable — tap to retry.</div>'; box.onclick=()=>coachPlan(true); return; }
   S.coachPlan={d:today(), focus:res.focus, steps:res.steps.slice(0,5)}; save();

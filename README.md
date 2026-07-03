@@ -8,6 +8,22 @@ with mnemonics, leech rescue, and production-direction recall.
 
 ---
 
+## What's new in v6.5 — La Grammatica (the rulebook)
+
+The Verbi tab is now **Regole (§)** — a complete, hand-written grammar rulebook: **26 rules** across *I Tempi* (all 15 tenses/moods: presente through congiuntivo trapassato, periodo ipotetico, imperativo, gerundio) and *La Struttura* (essere/avere + agreement, the agreement chain, clitic pronouns, ci & ne, articles, prepositions, piacere-verbs, si impersonale, negation & word order, comparatives, relatives). Every rule opens as a full story:
+
+- **≈ In English** — the equivalent construction when one exists (and the honest "English dropped this" when it doesn't)
+- **When** — the actual triggers, as scannable cards
+- **How** — the formation machinery
+- **Why it makes sense** — the underlying logic (photo vs video, reality-stamps, the anonymous subject…)
+- **The trap** — the classic mistake, named
+- **In the wild** — natural examples with audio
+- **Drill this rule →** — 5 AI-built questions targeting exactly that rule (with at least one built on the trap); passing reduces the matching gap-map counter, misses feed it
+
+Rules you keep failing are flagged red with your live error count straight from the gap map — the rulebook and your mistakes are one system. The congiuntivo chapter embeds the full VEDONO trigger walkthrough; the conjugator, trigger drill, sprint, and Scelta all live at the bottom as tools. All content hand-authored (not AI-generated) for accuracy.
+
+---
+
 ## What's new in v6 — "Milano Editoriale" (the redesign)
 
 A full visual rebuild in Italian editorial modernism — Milan's design heritage (the city that gave the world Vignelli's transit graphics, which this app's metro map already lives in):
@@ -138,11 +154,11 @@ Postgres you control) and a terms line; if selling to EU consumers, note GDPR ba
 | App (all of it) | `public/index.html` |
 | AI proxy + rate limits + accounts | `server.js` |
 | PWA install/offline | `public/manifest.json`, `public/sw.js` |
-| Headless test suite (36 checks, dev-only) | `smoke.js` — `npm i jsdom --no-save && node smoke.js` |
+| Headless test suite (40 checks, dev-only) | `smoke.js` — `npm i jsdom --no-save && node smoke.js` |
 
 ## 6 · Tinkering map (everything is in index.html)
 
-- `ERR_TAX` — the 15-category error taxonomy powering the gap map
+- `GRAMMAR_BOOK` — the 26-rule grammar rulebook (hand-written; edit freely)\n- `ERR_TAX` — the 15-category error taxonomy powering the gap map
 - `SCELTA_BANK` — tense-choice drill items `[sentence, [A,B], answer, why, errType]`
 - `FREQ_VOCAB` — frequency vocabulary `[it, en, minLevelIdx]`
 - `WRITING_TASKS` — exam writing prompts per level
