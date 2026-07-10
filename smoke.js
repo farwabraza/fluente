@@ -400,6 +400,48 @@ setTimeout(async () => {
     w.eval("closeSheet()");
   });
 
+  await T("client ai() retries a 429 with backoff and succeeds", async () => {
+    let calls = 0;
+    const orig = w.fetch;
+    w.fetch = async (url, opts) => {
+      if (String(url).includes("/api/chat")) {
+        calls++;
+        if (calls === 1) return { status: 429, json: async () => ({ error: { message: "rate limited" } }) };
+        return { status: 200, json: async () => ({ content: [{ type: "text", text: "eccomi" }] }) };
+      }
+      return orig(url, opts);
+    };
+    // shrink the backoff for the test by intercepting setTimeout delays > 1s
+    const rSt = w.setTimeout;
+    w.setTimeout = (fn, ms) => rSt(fn, Math.min(ms || 0, 20));
+    const out = await w.eval(`ai([{role:'user',content:'ciao'}],'sys')`);
+    w.setTimeout = rSt; w.fetch = orig;
+    if (calls !== 2) throw new Error("calls=" + calls);
+    if (out !== "eccomi") throw new Error("got: " + out);
+  });
+
+  await T("client ai() surfaces honest message after exhausted retries", async () => {
+    const orig = w.fetch;
+    w.fetch = async (url) => String(url).includes("/api/chat")
+      ? { status: 429, json: async () => ({ error: { message: "The Claude API is rate-limiting this key" } }) }
+      : orig(url);
+    const rSt = w.setTimeout;
+    w.setTimeout = (fn, ms) => rSt(fn, Math.min(ms || 0, 20));
+    const out = await w.eval(`ai([{role:'user',content:'ciao'}],'sys')`);
+    w.setTimeout = rSt; w.fetch = orig;
+    if (!/rate-limiting/.test(out)) throw new Error("got: " + out);
+  });
+
+  await T("warmServer pings /api/health without throwing", async () => {
+    let pinged = false;
+    const orig = w.fetch;
+    w.fetch = async (url, o) => { if (String(url).includes("/api/health")) { pinged = true; return { json: async () => ({ ok: true }) }; } return orig(url, o); };
+    w.eval("warmServer()");
+    await new Promise(r => setTimeout(r, 30));
+    w.fetch = orig;
+    if (!pinged) throw new Error("no ping");
+  });
+
   console.log(results.join("\n"));
   const fails = results.filter(r=>r[0]==="✗").length;
   console.log(fails ? "\n"+fails+" FAILURES" : "\nALL PASS");

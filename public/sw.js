@@ -1,5 +1,5 @@
 // FLUENTE service worker — cache app shell, never cache API calls.
-const CACHE = "fluente-v6-5";
+const CACHE = "fluente-v6-6";
 const SHELL = ["/", "/index.html", "/manifest.json", "/icon-192.png", "/icon-512.png"];
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));

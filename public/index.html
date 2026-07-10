@@ -352,15 +352,27 @@ if('serviceWorker' in navigator){ window.addEventListener('load',()=>navigator.s
 
 /* ---------- AI (proxied through our own server — API key lives in Replit Secrets) ---------- */
 async function ai(messages, system, expectJSON=false, maxTokens=1000){
-  for(let attempt=1; attempt<=2; attempt++){
+  const TRIES=3;
+  for(let attempt=1; attempt<=TRIES; attempt++){
     try{
+      const ctrl = new AbortController();
+      const timer = setTimeout(()=>ctrl.abort(), 90000); // free-tier servers can be slow to wake — don't hang forever
       const res = await fetch("/api/chat",{
         method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({messages, system, max_tokens:maxTokens})
+        body: JSON.stringify({messages, system, max_tokens:maxTokens}),
+        signal: ctrl.signal
       });
+      clearTimeout(timer);
       const data = await res.json();
-      if(data.error){ console.error(data.error); if(attempt<2) continue;
-        return expectJSON?null:"⚠ "+(data.error.message||'API error — check your key in Render Environment.'); }
+      if(data.error){
+        console.error(res.status, data.error);
+        if((res.status===429 || res.status===529 || res.status>=500) && attempt<TRIES){
+          toast(res.status===429 ? "API affollata — riprovo tra poco… ⏳" : "Riprovo… ⏳");
+          await new Promise(r=>setTimeout(r, attempt*2500));
+          continue;
+        }
+        return expectJSON?null:"⚠ "+(data.error.message||'API error — check your key in the server Environment settings.');
+      }
       let text = (data.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("\n");
       if(expectJSON){
         text = text.replace(/```json|```/g,'').trim();
@@ -369,13 +381,26 @@ async function ai(messages, system, expectJSON=false, maxTokens=1000){
         try{
           if(aa>-1 && (aa<a || a===-1)) return JSON.parse(text.slice(aa,bb+1));
           return JSON.parse(text.slice(a,b+1));
-        }catch(parseErr){ console.error('JSON parse fail, attempt',attempt); if(attempt<2) continue; return null; }
+        }catch(parseErr){ console.error('JSON parse fail, attempt',attempt); if(attempt<TRIES) continue; return null; }
       }
       return text;
-    }catch(e){ console.error('AI error',e); if(attempt<2){ await new Promise(r=>setTimeout(r,800)); continue; } return expectJSON ? null : "⚠ Connection hiccup — tap to retry."; }
+    }catch(e){
+      console.error('AI error',e);
+      if(attempt<TRIES){
+        // Network failure or timeout — likely a sleeping free-tier server. Poke it, tell the user, retry.
+        toast(attempt===1 ? "Il server si sta svegliando… riprovo ⏳" : "Ancora un attimo… ⏳");
+        try{ await fetch('/api/health',{cache:'no-store'}); }catch(_){}
+        await new Promise(r=>setTimeout(r, attempt*3000));
+        continue;
+      }
+      return expectJSON ? null : "⚠ Connection hiccup — tap to retry.";
+    }
   }
   return expectJSON?null:"⚠ Connection hiccup — tap to retry.";
 }
+/* Warm a sleeping free-tier server the moment the app opens, so it's awake
+   by the time the person starts a lesson (~1 min cold start on Render Free). */
+function warmServer(){ try{ fetch('/api/health',{cache:'no-store'}).catch(()=>{}); }catch(e){} }
 
 /* ---------- SPEECH ---------- */
 let voices=[], itVoice=null;
@@ -1358,6 +1383,7 @@ function addBub(who,html){
 function replaceLastAI(res){
   const log=$('#chatlog'); if(!log)return;
   const last=[...log.querySelectorAll('.bub.ai')].pop();
+  if(!last) return; // user navigated away while the reply was in flight
   if(!res||!res.reply){ last.innerHTML='⚠ Connection hiccup — send again.'; return; }
   last.innerHTML=`${esc(res.reply)} <button class="spk">🔊</button><span class="tr">${esc(res.translation||'')}</span>`;
   last.querySelector('.spk').onclick=()=>speak(res.reply);
@@ -2800,6 +2826,7 @@ async function esameLettura(lv){
    BOOT
 ========================================================= */
 (async function(){
+  warmServer(); // wake a sleeping free-tier server immediately — it'll be ready before the first lesson
   detectSTT(); // fire-and-forget — resolves before the user typically reaches Parla
   await loadState();
   renderHeader();

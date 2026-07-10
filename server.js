@@ -8,7 +8,12 @@ const app = express();
 app.use(express.json({ limit: "1mb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
+// Health check — also used by the client at boot to wake a sleeping free-tier instance early
+app.get("/api/health", (req, res) => res.json({ ok: true }));
+
 // Tiny in-memory rate limit so a leaked URL can't drain your credits
+// (default 60/min per IP; note users behind the same WiFi share an IP — raise via RATE_LIMIT_PER_MIN)
+const RATE_PER_MIN = parseInt(process.env.RATE_LIMIT_PER_MIN) || 60;
 const hits = new Map();
 const daily = new Map(); // per-IP daily AI-call counter (optional cap for shared/sold deployments)
 let dailyKey = new Date().toISOString().slice(0, 10);
@@ -19,7 +24,7 @@ function rateLimit(req, res, next) {
   const arr = (hits.get(ip) || []).filter((t) => t > windowStart);
   arr.push(now);
   hits.set(ip, arr);
-  if (arr.length > 30) {
+  if (arr.length > RATE_PER_MIN) {
     return res.status(429).json({ error: { message: "Slow down — too many requests this minute." } });
   }
   next();
@@ -38,6 +43,8 @@ function dailyCap(req, res, next) {
   next();
 }
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 app.post("/api/chat", rateLimit, dailyCap, async (req, res) => {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) {
@@ -48,25 +55,43 @@ app.post("/api/chat", rateLimit, dailyCap, async (req, res) => {
     return res.status(400).json({ error: { message: "messages array required" } });
   }
   const mt = Math.min(Math.max(parseInt(max_tokens) || 1000, 1), 4000);
-  try {
-    const r = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": key,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: process.env.CLAUDE_MODEL || "claude-sonnet-4-5",
-        max_tokens: mt,
-        system: system || "",
-        messages,
-      }),
-    });
-    const data = await r.json();
-    res.status(r.status).json(data);
-  } catch (e) {
-    res.status(502).json({ error: { message: "Upstream API error: " + e.message } });
+  const payload = JSON.stringify({
+    model: process.env.CLAUDE_MODEL || "claude-sonnet-4-5",
+    max_tokens: mt,
+    system: system || "",
+    messages,
+  });
+  // Anthropic returns 429 (rate limit) or 529 (overloaded) under load — with two people
+  // generating lessons at once this WILL happen on lower API tiers. Retry with backoff,
+  // honoring the retry-after header, instead of failing the user's lesson.
+  const MAX_TRIES = 3;
+  for (let attempt = 1; attempt <= MAX_TRIES; attempt++) {
+    try {
+      const r = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": key,
+          "anthropic-version": "2023-06-01",
+        },
+        body: payload,
+      });
+      if ((r.status === 429 || r.status === 529 || r.status >= 500) && attempt < MAX_TRIES) {
+        const ra = parseFloat(r.headers.get("retry-after"));
+        const wait = !isNaN(ra) ? Math.min(ra * 1000, 15000) : attempt * 1800;
+        await sleep(wait);
+        continue;
+      }
+      let data;
+      try { data = await r.json(); }
+      catch (e) { return res.status(502).json({ error: { message: "Claude API returned an unreadable response (HTTP " + r.status + ") — riprova." } }); }
+      if (r.status === 429) data = { error: { message: "The Claude API is rate-limiting this key right now (two people generating at once can hit lower API tiers). Waited and retried " + MAX_TRIES + "× — wait ~30s and try again, or raise your tier at console.anthropic.com." } };
+      if (r.status === 529) data = { error: { message: "Claude is momentarily overloaded (their side, not yours). Retried " + MAX_TRIES + "× — try again in a minute." } };
+      return res.status(r.status).json(data);
+    } catch (e) {
+      if (attempt < MAX_TRIES) { await sleep(attempt * 1200); continue; }
+      return res.status(502).json({ error: { message: "Upstream API error: " + e.message } });
+    }
   }
 });
 

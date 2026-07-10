@@ -8,6 +8,18 @@ with mnemonics, leech rescue, and production-direction recall.
 
 ---
 
+## What's new in v6.6 — connection-failure fixes (multi-user reliability)
+
+Reported symptom: "building the lesson" / booth turns failing with a connection error, two people using the app. Three compounding causes, all fixed:
+
+1. **Anthropic API rate limits (the main one).** Lesson generation is a large call; two people at once can hit the per-minute limits of lower API tiers → HTTP 429. The server now **retries 3× with backoff, honoring Anthropic's `retry-after` header** — most 429s and 529 "overloaded" moments now recover invisibly. If retries are exhausted, the app shows an honest message naming the cause instead of "connection issue". *If it keeps happening at your usage level, check your tier limits at console.anthropic.com → Limits — moving up a tier raises tokens/minute.*
+2. **Free-tier cold starts hidden by the app shell.** The PWA loads instantly from cache while the free server behind it is still waking (~1 min on Render Free) — so the first lesson call hung. The app now **pings `/api/health` the moment it opens**, waking the server while the person is still on the dashboard; the client also detects a sleeping server mid-call, shows "il server si sta svegliando… riprovo ⏳", pokes it, and retries with a 90-second budget instead of hanging.
+3. **Shared per-IP rate limit.** Two people on the same WiFi share one public IP — the old 30 requests/minute guard was shared between them. Default raised to **60/min**, configurable via the `RATE_LIMIT_PER_MIN` env var.
+
+Also fixed: navigating away from the booth while a reply was in flight could throw a silent error. (43 automated checks, including a live HTTP proof that a 429→retry→200 sequence delivers the lesson.)
+
+---
+
 ## What's new in v6.5 — La Grammatica (the rulebook)
 
 The Verbi tab is now **Regole (§)** — a complete, hand-written grammar rulebook: **26 rules** across *I Tempi* (all 15 tenses/moods: presente through congiuntivo trapassato, periodo ipotetico, imperativo, gerundio) and *La Struttura* (essere/avere + agreement, the agreement chain, clitic pronouns, ci & ne, articles, prepositions, piacere-verbs, si impersonale, negation & word order, comparatives, relatives). Every rule opens as a full story:
@@ -102,7 +114,7 @@ Render's free tier still includes web services — you're only charged if the se
 - `ANTHROPIC_API_KEY` = `sk-ant-...` (console.anthropic.com) — required
 - `DATABASE_URL` — Neon connection string → enables logins + cross-device sync
 - `TRANSCRIBE_API_KEY` — free at console.groq.com → enables the iPhone mic
-- Optional: `CLAUDE_MODEL`, `DAILY_AI_LIMIT`, `TRANSCRIBE_BASE_URL`, `TRANSCRIBE_MODEL`
+- Optional: `CLAUDE_MODEL`, `DAILY_AI_LIMIT`, `RATE_LIMIT_PER_MIN`, `TRANSCRIBE_BASE_URL`, `TRANSCRIBE_MODEL`
 
 💡 *Keeping Render awake:* a free uptime monitor (e.g. UptimeRobot) pinging your URL every 14 minutes prevents spin-down and fits inside the 750 free hours — a common pattern, though it burns your full monthly allowance on one service.
 
@@ -154,7 +166,7 @@ Postgres you control) and a terms line; if selling to EU consumers, note GDPR ba
 | App (all of it) | `public/index.html` |
 | AI proxy + rate limits + accounts | `server.js` |
 | PWA install/offline | `public/manifest.json`, `public/sw.js` |
-| Headless test suite (40 checks, dev-only) | `smoke.js` — `npm i jsdom --no-save && node smoke.js` |
+| Headless test suite (43 checks, dev-only) | `smoke.js` — `npm i jsdom --no-save && node smoke.js` |
 
 ## 6 · Tinkering map (everything is in index.html)
 
