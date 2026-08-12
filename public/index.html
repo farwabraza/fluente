@@ -207,6 +207,7 @@ input.ti{width:100%;border:1px solid var(--line-2);border-radius:14px;padding:13
 .ponte .pen{font-size:.82rem;opacity:.85}
 .ponte .pit{font-weight:600;font-size:.9rem}
 .stepdots{font-family:var(--font-m);font-size:.7rem;letter-spacing:.14em;color:var(--verde)}
+.roast{display:block;font-style:italic;color:var(--rosso);font-weight:700;margin-bottom:5px}
 
 /* ============ PARLA (the booth) ============ */
 .booth{background:var(--panel);color:var(--panel-tx);border-radius:var(--radius);padding:16px;margin:-4px -4px 14px;min-height:60dvh;display:flex;flex-direction:column;box-shadow:var(--sh-2);background-image:radial-gradient(120% 90% at 85% -10%, color-mix(in srgb, var(--blu) 22%, transparent) 0%, transparent 55%)}
@@ -312,7 +313,7 @@ const DEFAULT_STATE = {
   deck:null, parlaTurns:0, writeDone:{}, xpLog:{},
   errLog:{}, examLog:[], freqSeen:{},
   coachPlan:null, nativeLang:'', accent7:null, protocol:null,
-  gramPractice:{}, chiccaLog:{}
+  gramPractice:{}, chiccaLog:{}, brutale:false
 };
 let S = JSON.parse(JSON.stringify(DEFAULT_STATE));
 let storageOK = true;
@@ -889,6 +890,7 @@ function renderOggi(){
       <button class="btn sm" id="bPacks" style="flex:1.4;background:var(--verde);color:#fff">📦 Vocab packs<br><span style="font-size:.64rem;font-weight:400">10 words per context</span></button>
       <button class="btn sm" id="bBoost" style="flex:1;background:var(--carta2)">⚡ Boost<br><span style="font-size:.64rem;font-weight:400">+5 frequency</span></button>
     </div>
+    ${brutaleRow()}
     <div class="eyebrow b">LA SETTIMANA</div>
     <div class="card" style="padding:12px">${weekStrip()}</div>
     <div class="card" style="margin-top:14px;background:var(--carta2)">
@@ -907,6 +909,7 @@ function renderOggi(){
   $('#m3').onclick=()=>setTab('srs');
   $('#m4').onclick=()=>renderScrivi();
   $('#chiccaRow').onclick=()=>openChicca();
+  wireBrutale(renderOggi);
   $('#bDett').onclick=renderDettato;
   $('#bSpr').onclick=renderSprint;
   $('#bScelta').onclick=renderScelta;
@@ -1038,7 +1041,7 @@ function renderSprint(){
       const norm=s=>s.toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
       if(norm(inp.value)===norm(v[3])){ hits++; $('#sFb').innerHTML='<span style="color:var(--verde)">✓ '+esc(v[3])+'</span>'; }
       else{
-        $('#sFb').innerHTML='<span style="color:var(--rosso)">✗ → '+esc(v[3])+'</span>';
+        $('#sFb').innerHTML=roastFb(false)+'<span style="color:var(--rosso)">✗ → '+esc(v[3])+'</span>';
         const t = /congiuntivo/.test(v[2]) ? 'congiuntivo_forma' : /prossimo|trapassato/.test(v[2]) ? 'ausiliare' : 'coniugazione';
         logErr(t, (inp.value||'(blank)')+' ('+v[0]+' '+v[1]+', '+v[2]+')', v[3], 'sprint');
       }
@@ -1073,7 +1076,7 @@ function renderScrivi(){
     $('#scriviGo').innerHTML='<span class="spinner"></span>'; $('#scriviGo').disabled=true;
     const fb = await ai([{role:'user',content:`Student level: ${S.level}. Prompt: "${p}". Their Italian text: """${txt}"""
 Respond ONLY with JSON:
-{"corrected":"their text, fixed, natural","fixes":["error → fix → 5-word why" x2 max],"upgrade":"a more native way to say one of their phrases","errs":[{"t":"one of: ${ERR_TAX_KEYS}","w":"their wrong phrase","r":"corrected phrase"} for each REAL error, empty if none]}`}],'You are an encouraging Italian teacher. Concise, specific, never condescending. JSON only.',true);
+{"corrected":"their text, fixed, natural","fixes":["error → fix → 5-word why" x2 max],"upgrade":"a more native way to say one of their phrases","errs":[{"t":"one of: ${ERR_TAX_KEYS}","w":"their wrong phrase","r":"corrected phrase"} for each REAL error, empty if none]}`}], S.brutale?'You are a brutally funny Italian best friend correcting a mate\'s writing — colloquial roast tone in the fixes, parolacce welcome, roast the mistakes never the person, and every correction stays precise. JSON only.':'You are an encouraging Italian teacher. Concise, specific, never condescending. JSON only.',true);
     if(!fb||!fb.corrected){ $('#scriviFb').innerHTML='<div class="feedback-box">⚠ Hiccup — tap again.</div>'; $('#scriviGo').disabled=false; $('#scriviGo').textContent='Correct me →'; return; }
     logErrs(fb.errs,'scrivi');
     $('#scriviFb').innerHTML=`<div class="feedback-box">✅ <b>Versione corretta:</b>\n${esc(fb.corrected)}\n\n${(fb.fixes||[]).map(f=>'🔧 '+esc(f)).join('\n')}${fb.upgrade?'\n\n⭐ '+esc(fb.upgrade):''}${(fb.errs||[]).length?'\n\n🗺 '+fb.errs.length+' error'+(fb.errs.length>1?'s':'')+' tagged in your gap map':''}</div>`;
@@ -1143,7 +1146,7 @@ Respond ONLY with JSON:
       document.querySelectorAll('.sheet .qopt').forEach(x=>x.disabled=true);
       if(k===D.answer){ b.classList.add('right'); correct++; }
       else{ b.classList.add('wrong'); document.querySelectorAll('.sheet .qopt')[D.answer].classList.add('right'); }
-      $('#drillFb').innerHTML=`<div class="mnemo fadein" style="margin-top:10px"><b>${k===D.answer?'✓ Esatto!':'✗'} </b>${esc(D.why)}</div><button class="btn dark block" id="nextD">Next →</button>`;
+      $('#drillFb').innerHTML=`<div class="mnemo fadein" style="margin-top:10px">${roastFb(k===D.answer)}<b>${k===D.answer?'✓ Esatto!':'✗'} </b>${esc(D.why)}</div><button class="btn dark block" id="nextD">Next →</button>`;
       $('#nextD').onclick=()=>{di++;drillView();};
     });
   }
@@ -1336,7 +1339,7 @@ function renderParla(){
 
 function convoSystem(s){
   return `You are an Italian conversation partner inside a language app. Scenario: "${s.t}" — ${s.d}. Learner level: ${S.level}. Learner interests: ${S.interests.join(', ')}. ${s.id==='paziente'?'You play a PATIENT with a realistic presenting complaint (pick one: chest pain, persistent cough, abdominal pain, headache). Reveal details only when asked correctly, like a real anamnesi. The learner is the doctor.':''} ${s.id==='collega'?'You are a friendly specializzanda in oncologia discussing a realistic case.':''} ${s.id==='girovisite'?`You are the strutturato (attending) on morning rounds in the reparto di ${s.ward||'Medicina Interna'}. Invent ONE realistic inpatient typical of this ward (inspiration: ${s.seeds||'a common admission'}) — give name, age, day of admission. Open by asking the learner (the student on rotation) to present the patient or answer a focused question. Probe their clinical reasoning with short pimping questions appropriate to the ward, gently correct clinical Italian terminology, and reveal new findings (labs, imaging, overnight events) as the round progresses.`:''} ${s.id==='congresso'?'You are an Italian oncologist at a medical congress coffee break. Chat about research, ask about their poster and research interests, use realistic academic small talk.':''} ${s.id==='questura'?'You are an impiegato at the questura/anagrafe counter. The learner needs to sort out a realistic document issue (permesso renewal, cambio di residenza, carta d\'identità). Be realistically brisk and bureaucratic: ask for documents, mention marca da bollo, moduli, appuntamenti — use authentic sportello language (Lei form). If they use tu or informal register, gently model the formal version in your fix.':''} ${s.id==='telefonata'?'You are a call-center operator for an Italian public office or utility (pick one: comune, Agenzia delle Entrate, energy provider). The learner is calling about a realistic problem (wrong bill, missing document, appointment). Use formal phone Italian: "Mi dica", "Resti in linea", "Le passo l\'ufficio competente". Make them navigate hold-music bureaucracy realistically but resolvably.':''}
-RULES: Reply in Italian calibrated slightly above ${S.level} (i+1). Keep replies SHORT (1-3 sentences) and always end with something that invites a response. Stay in character. ANTI-SCRIPT RULE: every 3rd-4th turn, push the conversation somewhere plausible but UNEXPECTED within the scenario (a complication, a question they can't have rehearsed, a change of plan) so the learner must improvise, never recite.
+RULES: Reply in Italian calibrated slightly above ${S.level} (i+1). Keep replies SHORT (1-3 sentences) and always end with something that invites a response. Stay in character. ANTI-SCRIPT RULE: every 3rd-4th turn, push the conversation somewhere plausible but UNEXPECTED within the scenario (a complication, a question they can't have rehearsed, a change of plan) so the learner must improvise, never recite.${roastRules()?roastRules()+' Apply this tone to the "fix" and "nat" fields only — your in-character "reply" stays in character.':''}
 After your Italian reply, respond ONLY with JSON: {"reply":"your in-character Italian","translation":"English translation","fix":"if the learner's last message had a GRAMMAR error: the corrected phrase + 6-word explanation; else empty string","nat":"if their last message was grammatically fine but UNNATURAL (no native would phrase it that way): the natural version; else empty string","errs":[{"t":"error taxonomy key — one of: ${ERR_TAX_KEYS}","w":"the learner's wrong phrase verbatim","r":"the corrected phrase"} — one entry per REAL error in their last message, empty array if none or if they haven't spoken yet]}`;
 }
 
@@ -1774,6 +1777,7 @@ function renderVerbi(){
       }).join('')}`).join('')}
 
     <div class="eyebrow b" style="margin-top:18px">⚙ GLI STRUMENTI · practice tools</div>
+    ${brutaleRow()}
     <div class="row" style="margin-bottom:10px">
       <button class="btn dark" id="vbDrill" style="flex:1">🎯 Trigger drill<br><span style="font-size:.64rem;font-weight:400">indicativo o congiuntivo?</span></button>
       <button class="btn yellow" id="vbSprint" style="flex:1">⏱ Verb Sprint<br><span style="font-size:.64rem;font-weight:400">60s conjugation rush</span></button>
@@ -1809,6 +1813,7 @@ function renderVerbi(){
   </div>`;
   document.querySelectorAll('[data-gram]').forEach(b=>b.onclick=()=>grammarSheet(GRAMMAR_BOOK.find(g=>g.id===b.dataset.gram)));
   $('#rdgBtn').onclick=()=>grammarSheet(rdg);
+  wireBrutale(renderVerbi);
   document.querySelectorAll('[data-v]').forEach(b=>b.onclick=()=>{ vbVerb=b.dataset.v; $('#vbInput').value=vbVerb; drawTable(); });
   $('#vbInput').addEventListener('input',e=>{ vbVerb=e.target.value.trim().toLowerCase(); drawTable(); });
   $('#vbTense').addEventListener('change',e=>{ vbTense=e.target.value; drawTable(); });
@@ -2178,6 +2183,71 @@ const CHICCA_BANK = [
  {it:"Avere le braccine corte",en:"to be stingy",lit:"to have short little arms",ex:["Offre mai un caffè? Ha le braccine corte!","Does he ever buy a coffee? Short arms, that one!"],note:"Arms too short to reach the wallet. The -ine diminutive makes it crueler, not kinder. Standard version: «essere tirchio»."},
  {it:"Ne vale la pena!",en:"it's worth it!",lit:"it's worth the pain of it",ex:["Studiare l'italiano? Ne vale la pena.","Studying Italian? It's worth it."],note:"There's that «ne» again — 'of it'. «Non ne vale la pena» = not worth the trouble. A sentence you'll think in English and can now say with the exact same shape in Italian."}
 ];
+/* =========================================================
+   MODALITÀ BRUTALE — opt-in roast mode. Wrong answers get
+   flamed in colloquial Italian (parolacce included) — which
+   is itself listening practice. Hand-authored; the AI gets a
+   matching tone order only where it already speaks (no extra
+   calls). Always roasts the MISTAKE, never the person.
+========================================================= */
+const ROAST_BANK = [
+ ["Ma che cazzo scrivi?","what the hell are you writing?"],
+ ["No amore, no. Proprio no.","no sweetheart, no. Just no."],
+ ["Madonna santa. Riproviamo, va'.","holy Madonna. Let's try again, go on."],
+ ["Anche il mio gatto lo sapeva. E non ho un gatto.","even my cat knew that one. And I don't have a cat."],
+ ["Porca miseria, eri così vicina!","bloody hell, you were so close!"],
+ ["Che cavolo era quello?!","what the heck was that?!"],
+ ["Dante si sta rivoltando nella tomba.","Dante is rolling in his grave."],
+ ["Bocciata. Senza appello.","failed. No appeal."],
+ ["Ahia. Ahia ahia ahia.","ouch. Ouch ouch ouch."],
+ ["Ma sei seria?!","are you serious?!"],
+ ["Cazzo, no! Ci risiamo.","hell no! Here we go again."],
+ ["Bellissimo. Peccato sia sbagliato.","beautiful. Shame it's wrong."],
+ ["La grammatica ti ha vista e si è messa a piangere.","the grammar saw you coming and burst into tears."],
+ ["Mamma mia, che disastro.","mamma mia, what a disaster."],
+ ["Ripetiamo insieme: no.","let's repeat together: no."],
+ ["Hai fatto piangere la nonna.","you made grandma cry."],
+ ["Vergogna. VER-GO-GNA.","shame. SHA-A-AME."],
+ ["Manco per niente.","not even close."],
+ ["Oh no. No no no. Chiama aiuto.","oh no. No no no. Call for help."],
+ ["Che pena, amore mio.","how painful, my love."],
+ ["L'italiano ti denuncia per maltrattamento.","Italian is filing charges for abuse."],
+ ["Boh, magari il francese? Dico per dire.","dunno, maybe French? Just saying."]
+];
+const ROAST_PRAISE = [
+ ["Vabbè, era facile.","fine, that one was easy."],
+ ["Oh! Guarda un po' chi si sveglia.","oh! Look who's waking up."],
+ ["Miracolo. Segna la data.","a miracle. Mark the date."],
+ ["Brava, cazzo. Era ora.","damn right. About time."],
+ ["Non male. Non ti montare la testa.","not bad. Don't let it go to your head."],
+ ["Perfino giusto. Mi commuovo.","actually correct. I'm getting emotional."],
+ ["Ecco. Così. Sempre così.","there. Like that. Always like that."],
+ ["Ok ok, ogni tanto ci prendi.","ok ok, sometimes you do get it."]
+];
+function roastFb(ok){
+  if(!S.brutale) return '';
+  const b = ok ? ROAST_PRAISE : ROAST_BANK;
+  const r = b[Math.floor(Math.random()*b.length)];
+  return `<span class="roast">${esc(r[0])} <span class="muted" style="font-size:.74rem;font-style:normal">${esc(r[1])}</span></span>`;
+}
+/* One-sentence tone order appended to prompts that ALREADY run — costs ~0 extra tokens */
+function roastRules(){
+  return S.brutale ? ' TONE (modalità brutale — the learner opted in and finds it motivating): deliver corrections like a foul-mouthed Italian best friend roasting them — colloquial, theatrical despair, parolacce welcome (cazzo, che cavolo, ma dai). Roast the MISTAKE, never their intelligence, and keep the actual correction/explanation precise.' : '';
+}
+function brutaleRow(){
+  return `<button class="mission" id="brutRow" style="${S.brutale?'border-left:5px solid var(--rosso);':''}">
+    <span style="font-size:1.3rem">${S.brutale?'🔥':'😇'}</span>
+    <span><b>Modalità brutale ${S.brutale?'ON':'OFF'}</b><br><span class="muted">${S.brutale?'Mistakes get roasted in colloquial Italian, parolacce included':'Flip it and your mistakes get roasted in colloquial Italian — trauma-based memory, parolacce included'}</span></span>
+    <span class="st-go" style="margin-left:auto">${S.brutale?'SPEGNI':'ACCENDI'}</span>
+  </button>`;
+}
+function wireBrutale(rerender){
+  const b=$('#brutRow'); if(!b) return;
+  b.onclick=()=>{ S.brutale=!S.brutale; save();
+    toast(S.brutale?'Modalità brutale attivata 🔥 In bocca al lupo.':'Torniamo gentili 😇');
+    rerender(); };
+}
+
 function chiccaIdx(){ return Math.floor(Date.now()/86400000)%CHICCA_BANK.length; }
 function openChicca(idx){
   const i=(idx===undefined)?chiccaIdx():((idx%CHICCA_BANK.length)+CHICCA_BANK.length)%CHICCA_BANK.length;
@@ -2315,7 +2385,7 @@ function grammarCreate(g){
     if(s.length<8){ toast('Write a full sentence first'); return; }
     $('#gcGo').innerHTML='<span class="spinner"></span>'; $('#gcGo').disabled=true;
     const r=await ai([{role:'user',content:`An Italian learner (level ${S.level}) was asked to write one sentence using the rule "${g.t}" (core: ${g.note}). They wrote: "${s}".
-Judge it. Respond ONLY with JSON: {"usesRule":true/false,"correct":true/false,"fix":"corrected sentence, or empty if already correct","why":"max 25 words, plain English, NO grammar terminology — show the English equivalent construction in quotes instead of naming tenses"}`}],'Meticulous but warm Italian teacher. JSON only.',true,600);
+Judge it. Respond ONLY with JSON: {"usesRule":true/false,"correct":true/false,"fix":"corrected sentence, or empty if already correct","why":"max 25 words, plain English, NO grammar terminology — show the English equivalent construction in quotes instead of naming tenses${S.brutale?'; if wrong, open the why with a short colloquial Italian roast (parolacce welcome) before the explanation':''}"}`}],'Meticulous but warm Italian teacher. JSON only.'+roastRules(),true,600);
     $('#gcGo').disabled=false; $('#gcGo').textContent='Check another →';
     if(!r){ $('#gcFb').innerHTML='<div class="card">⚠ Connection hiccup — try again.</div>'; return; }
     if(r.correct && r.usesRule!==false){
@@ -2357,7 +2427,7 @@ Generate 5 two-option fill-in items testing EXACTLY this rule, at least one buil
       if(k===it.a){b.classList.add('right');correct++;}
       else{b.classList.add('wrong');document.querySelectorAll('.sheet .qopt')[it.a].classList.add('right');
         logErr(g.err, it.s.replace('___',it.o[k]), it.s.replace('___',it.o[it.a]), 'grammatica');}
-      $('#gFb').innerHTML=`<div class="mnemo" style="margin-top:10px"><b>${k===it.a?'✓':'✗'} </b>${esc(it.w)}</div><button class="btn dark block" id="gN">${i<set.items.length-1?'Next →':'Result →'}</button>`;
+      $('#gFb').innerHTML=`<div class="mnemo" style="margin-top:10px">${roastFb(k===it.a)}<b>${k===it.a?'✓':'✗'} </b>${esc(it.w)}</div><button class="btn dark block" id="gN">${i<set.items.length-1?'Next →':'Result →'}</button>`;
       $('#gN').onclick=()=>{i++;show();};
     });
   }
@@ -2388,7 +2458,7 @@ async function triggerDrill(){
       document.querySelectorAll('.sheet .qopt').forEach(x=>x.disabled=true);
       if(k===it.answer){b.classList.add('right');correct++;} else {b.classList.add('wrong');document.querySelectorAll('.sheet .qopt')[it.answer].classList.add('right');
         logErr('congiuntivo_quando', it.sentence.replace('___',it.options[k]), it.sentence.replace('___',it.options[it.answer]), 'trigger');}
-      $('#dFb').innerHTML=`<div class="mnemo" style="margin-top:10px"><b>${k===it.answer?'✓':'✗'} </b>${esc(it.why)}</div><button class="btn dark block" id="dN">${i<set.items.length-1?'Next →':'See score →'}</button>`;
+      $('#dFb').innerHTML=`<div class="mnemo" style="margin-top:10px">${roastFb(k===it.answer)}<b>${k===it.answer?'✓':'✗'} </b>${esc(it.why)}</div><button class="btn dark block" id="dN">${i<set.items.length-1?'Next →':'See score →'}</button>`;
       $('#dN').onclick=()=>{i++;show();};
     });
   }
@@ -2660,7 +2730,7 @@ function renderScelta(){
         b.classList.add('wrong'); document.querySelectorAll('.qopt')[it[2]].classList.add('right');
         logErr(it[4], it[0].replace('___',it[1][k]), it[0].replace('___',it[1][it[2]]), 'scelta');
       }
-      $('#scFb').innerHTML=`<div class="mnemo fadein" style="margin-top:10px"><b>${k===it[2]?'✓':'✗'} </b>${esc(it[3])}</div><button class="btn dark block" id="scN">${i<pool.length-1?'Next →':'Score →'}</button>`;
+      $('#scFb').innerHTML=`<div class="mnemo fadein" style="margin-top:10px">${roastFb(k===it[2])}<b>${k===it[2]?'✓':'✗'} </b>${esc(it[3])}</div><button class="btn dark block" id="scN">${i<pool.length-1?'Next →':'Score →'}</button>`;
       $('#scN').onclick=()=>{i++;ui();};
     });
   }

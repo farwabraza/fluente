@@ -8,6 +8,18 @@ with mnemonics, leech rescue, and production-direction recall.
 
 ---
 
+## What's new in v6.8 — 🔥 Modalità Brutale (opt-in roast mode)
+
+Inspired by apps where the AI roasts your mistakes so hard you never make them again. Off by default; one tap on the **Modalità brutale** row (on Oggi or in Regole) arms it everywhere:
+
+- **Instant drills** (lesson drills, rule drill ×5, trigger drill, Scelta, Verb Sprint): wrong answers get flamed with a line from a hand-written bank of 22 colloquial Italian roasts — parolacce included — each with a tiny English gloss, so the insult is itself listening practice («Anche il mio gatto lo sapeva. E non ho un gatto.»). Right answers earn grudging praise («Miracolo. Segna la data.»).
+- **AI corrections** (booth conversations, Scrivi, Crea la tua frase): the models get a one-sentence tone order to correct you like a foul-mouthed Italian best friend — roast the mistake, never the person, correction stays precise. In the booth only the `fix`/`nat` chips get brutal; the in-character reply stays in character.
+- **Zero extra cost:** drill roasts are client-side (no API call), and the AI tone rides on prompts that already run.
+
+(57 automated checks.)
+
+---
+
 ## What's new in v6.7 — English bridges, il metodo & la chicca
 
 Built for how this learner actually thinks: they *speak* decent Italian and understand English perfectly, but don't carry grammar terminology in either language — and their notes follow an ADHD method (one line, one idea, a hook).
@@ -185,6 +197,7 @@ Postgres you control) and a terms line; if selling to EU consumers, note GDPR ba
 
 - `GRAMMAR_BOOK` — the 26-rule grammar rulebook (hand-written; edit freely — each rule: `note` one-liner, `bridge` English parallels, when/how/why/trap/examples)
 - `CHICCA_BANK` — the 46 daily colloquial phrases & facts (hand-written; add your own)
+- `ROAST_BANK` / `ROAST_PRAISE` — the Modalità Brutale insult & grudging-praise lines (hand-written; make them meaner)
 - `ERR_TAX` — the 15-category error taxonomy powering the gap map
 - `SCELTA_BANK` — tense-choice drill items `[sentence, [A,B], answer, why, errType]`
 - `FREQ_VOCAB` — frequency vocabulary `[it, en, minLevelIdx]`

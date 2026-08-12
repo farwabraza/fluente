@@ -487,6 +487,53 @@ setTimeout(async () => {
     w.eval("closeSheet()");
   });
 
+  await T("ROAST banks integrity: 20+ roasts + praise, all [it,en] pairs, unique", () => {
+    if (w.eval("ROAST_BANK.length") < 20) throw new Error("bank too small");
+    if (w.eval("ROAST_PRAISE.length") < 5) throw new Error("praise bank too small");
+    const bad = w.eval(`ROAST_BANK.concat(ROAST_PRAISE).filter(r=>!Array.isArray(r)||r.length!==2||!r[0]||!r[1]).length`);
+    if (bad) throw new Error(bad + " malformed lines");
+    const its = w.eval("ROAST_BANK.map(r=>r[0]).join('|')").split("|");
+    if (new Set(its).size !== its.length) throw new Error("duplicate roasts");
+  });
+
+  await T("brutale defaults OFF: roastFb empty, prompts clean, toggle rows present", () => {
+    w.eval("S.brutale = false");
+    if (w.eval("roastFb(false)") !== "") throw new Error("roast leaks when off");
+    if (w.eval("roastRules()") !== "") throw new Error("prompt tone leaks when off");
+    if (w.eval("convoSystem(SCENARIOS[0])").includes("modalità brutale")) throw new Error("booth prompt leaks when off");
+    w.eval("renderOggi()");
+    if (!w.document.querySelector("#brutRow")) throw new Error("no toggle on Oggi");
+    w.eval("setTab('verbi')");
+    if (!w.document.querySelector("#brutRow")) throw new Error("no toggle on Regole");
+  });
+
+  await T("toggle flips S.brutale and rerenders; roast shows on wrong Scelta pick", () => {
+    w.eval("renderOggi()");
+    w.document.querySelector("#brutRow").click();
+    if (!S.brutale) throw new Error("toggle didn't arm");
+    if (!w.document.querySelector("#brutRow").textContent.includes("ON")) throw new Error("row didn't rerender");
+    const fb = w.eval("roastFb(false)");
+    if (!fb.includes('class="roast"')) throw new Error("no roast span");
+    w.eval("renderScelta()");
+    const it = w.eval("JSON.stringify(SCELTA_BANK.find(x=>x[0]===document.querySelector('.card h2').textContent) || null)");
+    // click an option; whichever it is, feedback box must exist — then check roast presence on a forced wrong
+    const opts = [...w.document.querySelectorAll(".qopt")];
+    const right = w.eval("(function(){const t=document.querySelector('.card h2').textContent; const b=SCELTA_BANK.find(x=>x[0]===t); return b?b[2]:0;})()");
+    opts[1 - right].click(); // deliberately wrong
+    if (!w.document.querySelector("#scFb .roast")) throw new Error("no roast in Scelta feedback");
+    w.eval("setTab('oggi')");
+  });
+
+  await T("brutale ON: booth + scrivi + crea prompts carry the tone order, in-character reply exempt", () => {
+    w.eval("S.brutale = true");
+    const sys = w.eval("convoSystem(SCENARIOS[0])");
+    if (!sys.includes("modalità brutale")) throw new Error("booth tone missing");
+    if (!sys.includes('"reply" stays in character')) throw new Error("in-character exemption missing");
+    if (!html.includes("brutally funny Italian best friend")) throw new Error("scrivi brutal system missing");
+    if (!html.includes("open the why with a short colloquial Italian roast")) throw new Error("crea tone missing");
+    w.eval("S.brutale = false; save();");
+  });
+
   await T("lesson + tutor prompts forbid grammar terminology (explain by English parallel)", () => {
     if (!html.includes("does NOT remember grammar terminology in either language")) throw new Error("lesson prompt instruction missing");
     if (!html.includes("never explain by naming tenses")) throw new Error("tutor prompt instruction missing");
