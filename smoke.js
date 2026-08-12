@@ -400,6 +400,99 @@ setTimeout(async () => {
     w.eval("closeSheet()");
   });
 
+  await T("every rule has an ADHD nota + a 2-pair English bridge", () => {
+    const bad = w.eval(`GRAMMAR_BOOK.filter(g => typeof g.note!=='string' || g.note.length<15 || !Array.isArray(g.bridge) || g.bridge.length<2 || g.bridge.some(p=>!Array.isArray(p)||p.length!==2||!p[0]||!p[1])).length`);
+    if (bad) throw new Error(bad + " rules missing note/bridge");
+  });
+
+  await T("rule sheet shows LA NOTA, IL PONTE and the 4-step METODO", () => {
+    w.eval(`grammarSheet(GRAMMAR_BOOK.find(g=>g.id==='trapassato'))`);
+    const t = w.document.body.textContent;
+    for (const sec of ["LA NOTA", "IL PONTE", "IL METODO", "Copri & ricorda", "Crea la tua frase"]) {
+      if (!t.includes(sec)) throw new Error(sec + " missing");
+    }
+    if (!t.includes("had worked all night")) throw new Error("bridge English side missing");
+    for (const id of ["gRecall","gDrill","gCreate"]) { if(!w.document.querySelector("#"+id)) throw new Error(id+" missing"); }
+    if (!S.gramPractice.trapassato || !S.gramPractice.trapassato.read) throw new Error("read step not marked");
+    w.eval("closeSheet()");
+  });
+
+  await T("recall step: flip, honest ✓, dot earned", () => {
+    w.eval(`grammarSheet(GRAMMAR_BOOK.find(g=>g.id==='trapassato'))`);
+    w.document.querySelector("#gRecall").click();
+    if (!w.document.body.textContent.includes("Without peeking")) throw new Error("recall view missing");
+    w.document.querySelector("#gFlip").click();
+    if (!w.document.body.textContent.includes("LA NOTA")) throw new Error("flip didn't reveal nota");
+    w.document.querySelector("#gGot").click();
+    if (!S.gramPractice.trapassato.recall) throw new Error("recall not marked");
+    if (!w.document.querySelector("#gRecall").className.includes("done")) throw new Error("step row not marked done");
+    w.eval("closeSheet()");
+  });
+
+  await T("create step renders textarea; drill score feeds the dots", () => {
+    w.eval(`grammarSheet(GRAMMAR_BOOK.find(g=>g.id==='trapassato'))`);
+    w.document.querySelector("#gCreate").click();
+    if (!w.document.querySelector("#gcIn")) throw new Error("no textarea");
+    w.eval("closeSheet()");
+    w.eval(`S.gramPractice.trapassato.drill = 5;`);
+    const dots = w.eval(`stepDots('trapassato')`);
+    if (dots !== "●●○") throw new Error("dots=" + dots);
+  });
+
+  await T("Regole tab shows La regola di oggi + step dots", () => {
+    w.eval("setTab('verbi')");
+    if (!w.document.body.textContent.includes("LA REGOLA DI OGGI")) throw new Error("no daily rule card");
+    if (!w.document.querySelector("#rdgBtn")) throw new Error("no rdg button");
+    if (!w.document.querySelectorAll(".stepdots").length) throw new Error("no dots rendered");
+  });
+
+  await T("regolaDelGiorno prefers your worst gap-mapped rule", () => {
+    w.eval("S.errLog = {}; logErr('ausiliare','ho andato','sono andato','t'); ");
+    const id = w.eval("regolaDelGiorno().id");
+    if (id !== "ausiliari") throw new Error("picked " + id);
+  });
+
+  await T("CHICCA_BANK integrity: 40+, all fields, unique phrases", () => {
+    const n = w.eval("CHICCA_BANK.length");
+    if (n < 40) throw new Error("only " + n);
+    const bad = w.eval(`CHICCA_BANK.filter(c=>!c.it||!c.en||!Array.isArray(c.ex)||c.ex.length!==2||!c.note||c.note.length<30).length`);
+    if (bad) throw new Error(bad + " malformed chicche");
+    const its = w.eval("CHICCA_BANK.map(c=>c.it).join('|')").split("|");
+    if (new Set(its).size !== its.length) throw new Error("duplicate phrases");
+  });
+
+  await T("Oggi shows the chicca row; opening awards XP once and marks done", () => {
+    w.eval("renderOggi()");
+    if (!w.document.querySelector("#chiccaRow")) throw new Error("no chicca row");
+    const xp0 = S.xp;
+    w.eval("openChicca()");
+    if (!w.document.body.textContent.includes("LA CHICCA DI OGGI")) throw new Error("sheet missing");
+    if (S.xp !== xp0 + 5) throw new Error("xp delta " + (S.xp - xp0));
+    w.eval("closeSheet(); openChicca();");
+    if (S.xp !== xp0 + 5) throw new Error("xp awarded twice");
+    w.eval("closeSheet(); renderOggi();");
+    if (!w.document.querySelector("#chiccaRow").className.includes("done")) throw new Error("row not marked done");
+  });
+
+  await T("chicca → Ripasso: adds once, dedupes, Un'altra browses", () => {
+    w.eval("openChicca(3)");
+    const n0 = S.deck.length;
+    w.document.querySelector("#chAdd").click();
+    if (S.deck.length !== n0 + 1) throw new Error("not added");
+    w.document.querySelector("#chAdd").click();
+    if (S.deck.length !== n0 + 1) throw new Error("duplicate added");
+    const before = w.document.body.textContent;
+    w.document.querySelector("#chNext").click();
+    if (w.document.body.textContent === before) throw new Error("Un'altra didn't advance");
+    w.eval("closeSheet()");
+  });
+
+  await T("lesson + tutor prompts forbid grammar terminology (explain by English parallel)", () => {
+    if (!html.includes("does NOT remember grammar terminology in either language")) throw new Error("lesson prompt instruction missing");
+    if (!html.includes("never explain by naming tenses")) throw new Error("tutor prompt instruction missing");
+    if (!html.includes('"bridge":[{"en"')) throw new Error("lesson bridge JSON field missing");
+  });
+
   await T("client ai() retries a 429 with backoff and succeeds", async () => {
     let calls = 0;
     const orig = w.fetch;

@@ -8,6 +8,19 @@ with mnemonics, leech rescue, and production-direction recall.
 
 ---
 
+## What's new in v6.7 — English bridges, il metodo & la chicca
+
+Built for how this learner actually thinks: they *speak* decent Italian and understand English perfectly, but don't carry grammar terminology in either language — and their notes follow an ADHD method (one line, one idea, a hook).
+
+1. **🌉 Il Ponte — English parallels everywhere.** Every one of the 26 rules now has a hand-written *bridge*: 2 side-by-side pairs proving "you already say this in English" — the English construction shown as a quoted specimen sentence (never named with jargon), mapped straight onto the Italian. AI lessons and the verb tutor got the same standing order: *never explain by naming tenses — show the matching English construction in quotes* ("it's the 'I had done' move"), and lessons now generate their own bridge pairs.
+2. **📝 La Nota — the ADHD note line.** Every rule (and every AI lesson) now carries one compressed copy-into-your-notebook line — rule core + hook + micro-example, sticky-note styled. It's also the recall anchor for step 2 of il metodo.
+3. **🔁 Il Metodo — the same practice pattern on every rule.** Read the story → **Copri & ricorda** (cover the note, say the rule + an example out loud, flip, honest self-grade) → **Drill ×5** (existing AI drill; 4/5 earns the dot) → **Crea la tua frase** (write one sentence about *your* life using the rule; AI checks it, catches rule-dodging, feeds mistakes to the gap map). Progress dots ●●○ live on every rule row, and **La Regola di Oggi** at the top of Regole picks your worst gap-mapped rule (or rotates daily) so there's never a "where do I start".
+4. **🍋 La Chicca di Oggi — one colloquial thing a day.** A hand-authored bank of 46 colloquial phrases, idioms and cultural facts (boh, magari, mi raccomando, the cappuccino-after-11 rule, why you answer *Crepi!*, why the phone is answered "ready!"…) rotating daily on the Oggi dashboard: 30 seconds, +5 XP, audio, the story behind it, one tap to add it to Ripasso, "un'altra →" to keep browsing.
+
+(53 automated checks.)
+
+---
+
 ## What's new in v6.6 — connection-failure fixes (multi-user reliability)
 
 Reported symptom: "building the lesson" / booth turns failing with a connection error, two people using the app. Three compounding causes, all fixed:
@@ -170,7 +183,9 @@ Postgres you control) and a terms line; if selling to EU consumers, note GDPR ba
 
 ## 6 · Tinkering map (everything is in index.html)
 
-- `GRAMMAR_BOOK` — the 26-rule grammar rulebook (hand-written; edit freely)\n- `ERR_TAX` — the 15-category error taxonomy powering the gap map
+- `GRAMMAR_BOOK` — the 26-rule grammar rulebook (hand-written; edit freely — each rule: `note` one-liner, `bridge` English parallels, when/how/why/trap/examples)
+- `CHICCA_BANK` — the 46 daily colloquial phrases & facts (hand-written; add your own)
+- `ERR_TAX` — the 15-category error taxonomy powering the gap map
 - `SCELTA_BANK` — tense-choice drill items `[sentence, [A,B], answer, why, errType]`
 - `FREQ_VOCAB` — frequency vocabulary `[it, en, minLevelIdx]`
 - `WRITING_TASKS` — exam writing prompts per level
