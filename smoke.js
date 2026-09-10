@@ -658,6 +658,101 @@ setTimeout(async () => {
     if (!/refreshPlan\(\); \/\/ fire-and-forget/.test(html)) throw new Error("boot does not poll /api/plan");
   });
 
+
+  /* ---------- v7: local day, streak freeze, micro-session, la rotta ---------- */
+  await T("today() is the LOCAL calendar day and daysAgo() agrees with it", () => {
+    const d = new Date(); const local = new Date(d.getTime() - d.getTimezoneOffset()*60000).toISOString().slice(0,10);
+    if (w.eval("today()") !== local) throw new Error("today()=" + w.eval("today()") + " local=" + local);
+    if (w.eval("daysAgo(0)") !== local) throw new Error("daysAgo(0)");
+    const y = new Date(); y.setDate(y.getDate()-1); const ly = new Date(y.getTime() - y.getTimezoneOffset()*60000).toISOString().slice(0,10);
+    if (w.eval("daysAgo(1)") !== ly) throw new Error("daysAgo(1)");
+  });
+
+  await T("touchStreak: consecutive day +1; one skipped day is covered by a ❄️ freeze; two skipped days reset; every 7th day earns a freeze", () => {
+    w.eval("S.lastDay=daysAgo(1); S.streak=5; S.streakFreezes=0; touchStreak();");
+    if (S.streak !== 6) throw new Error("consecutive: " + S.streak);
+    w.eval("S.lastDay=daysAgo(2); S.streak=5; S.streakFreezes=1; touchStreak();");
+    if (S.streak !== 6 || S.streakFreezes !== 0) throw new Error("freeze: streak=" + S.streak + " freezes=" + S.streakFreezes);
+    w.eval("S.lastDay=daysAgo(2); S.streak=5; S.streakFreezes=0; touchStreak();");
+    if (S.streak !== 1) throw new Error("no freeze should reset: " + S.streak);
+    w.eval("S.lastDay=daysAgo(3); S.streak=9; S.streakFreezes=2; touchStreak();");
+    if (S.streak !== 1) throw new Error("two skipped days must reset even with freezes: " + S.streak);
+    w.eval("S.lastDay=daysAgo(1); S.streak=6; S.streakFreezes=0; touchStreak();");
+    if (S.streak !== 7 || S.streakFreezes !== 1) throw new Error("7th day should earn a freeze: " + S.streakFreezes);
+    if (S.streakBest < 7) throw new Error("streakBest not tracked");
+    w.eval("S.lastDay=today(); S.streak=3; S.streakFreezes=0;");
+  });
+
+  await T("Oggi sizes the day to prefs.minutes: 5 min → one required mission (micro); 25 → four", () => {
+    w.eval("S.placed=true; S.goal=null; S.prefs={minutes:5}; S.microLog={}; setTab('oggi');");
+    if (JSON.stringify(w.eval("requiredMissions()")) !== '["micro"]') throw new Error("5 min → " + JSON.stringify(w.eval("requiredMissions()")));
+    if (!/Una fermata oggi/.test(w.document.querySelector("h1").textContent)) throw new Error("headline: " + w.document.querySelector("h1").textContent);
+    if (!w.document.querySelector("#microRow")) throw new Error("no micro row");
+    if (!w.document.querySelector("#rottaRow") || !/Imposta la rotta/.test(w.document.querySelector("#rottaRow").textContent)) throw new Error("no rotta CTA");
+    w.eval("S.prefs={minutes:25}; setTab('oggi');");
+    if (w.eval("requiredMissions()").length !== 4) throw new Error("25 min → " + w.eval("requiredMissions()").length);
+    if (!/Quattro fermate oggi/.test(w.document.querySelector("h1").textContent)) throw new Error("headline 25");
+  });
+
+  await T("la rotta: six screens → goal C1 (specialty), 10 min/day, declared gap seeds the gap map, Oggi/Linea/Esame follow", () => {
+    w.eval("S.errLog={}; S.selfGaps=[]; exLv=null; renderRotta(()=>setTab('oggi'));");
+    const click = sel => { const el = w.document.querySelector(sel); if (!el) throw new Error("missing " + sel); el.click(); };
+    if (!/LA ROTTA · 1 \/ 6/.test(w.document.body.textContent)) throw new Error("screen 1 not shown");
+    click('[data-why="specialty"]'); click('#rNext');                    // 1 goal
+    click('[data-ex="CELI"]'); w.document.querySelector('#rDate').value = '2030-06-15'; click('#rNext'); // 2 exam
+    click('[data-ses="block"]'); click('#rNext');                        // 3 style
+    click('[data-gap="preposizioni"]'); click('#rNext');                 // 4 gaps
+    click('[data-min="10"]'); click('#rNext');                           // 5 minutes
+    w.document.querySelector('#rSlot').value = '07:30'; w.document.querySelector('#rAnchor').value = 'prima del turno'; click('#rNext'); // 6 pact → finish
+    if (!/ROTTA IMPOSTATA/.test(w.document.body.textContent)) throw new Error("no summary screen");
+    if (S.goal.target !== "C1" || S.goal.why !== "specialty" || S.goal.examType !== "CELI" || S.goal.examDate !== "2030-06-15") throw new Error("goal: " + JSON.stringify(S.goal));
+    if (S.prefs.minutes !== 10 || S.prefs.session !== "block" || S.prefs.slot !== "07:30" || S.prefs.anchor !== "prima del turno") throw new Error("prefs: " + JSON.stringify(S.prefs));
+    if (!S.errLog.preposizioni || S.errLog.preposizioni.n !== 2 || !S.errLog.preposizioni.seed) throw new Error("gap not seeded: " + JSON.stringify(S.errLog.preposizioni));
+    if (S.coachPlan !== null) throw new Error("coachPlan should reset");
+    click('#rGo');
+    if (!/Rotta Certificato → C1/.test(w.document.querySelector("#rottaRow").textContent)) throw new Error("rotta row: " + w.document.querySelector("#rottaRow").textContent);
+    if (!/gg all'esame/.test(w.document.querySelector(".statgrid").textContent)) throw new Error("no countdown stat");
+    w.eval("renderLinea()");
+    if (!/LA TUA META/.test(w.document.body.textContent) || !/oltre la meta/.test(w.document.body.textContent)) throw new Error("Linea labels missing");
+    w.eval("renderEsame()");
+    if (!/btn sm dark/.test(w.document.querySelector('[data-lv="C1"]').className)) throw new Error("exam level did not follow the goal");
+    if (!/Regola/.test(w.eval("regolaDelGiorno().t")) && w.eval("regolaDelGiorno().err") !== "preposizioni") throw new Error("regola del giorno ignores the seeded gap: " + w.eval("regolaDelGiorno().err"));
+  });
+
+  await T("coachFallback prescribes without AI; ≤5-minute days skip the AI call entirely", async () => {
+    const f = w.eval("coachFallback()");
+    if (!f.steps.length || !f.focus) throw new Error("empty fallback");
+    let fetched = false; const orig = w.fetch; w.fetch = async (u, o) => { if (String(u).includes("/api/chat")) fetched = true; return orig(u, o); };
+    w.eval("S.prefs.minutes=5; S.coachPlan=null; setTab('oggi');");
+    await w.eval("coachPlan(true)");
+    w.fetch = orig;
+    if (fetched) throw new Error("AI called on a 5-minute day");
+    if (!S.coachPlan || S.coachPlan.steps[0].go !== "micro") throw new Error("plan: " + JSON.stringify(S.coachPlan));
+    if (!w.document.querySelector('[data-go="micro"]')) throw new Error("micro step not drawn");
+    w.eval("S.prefs.minutes=10;");
+  });
+
+  await T("la sessione minima: card → 2 scelte → shadow line; completes with +10 XP, microLog, streak — no fetch", async () => {
+    let fetched = false; const orig = w.fetch; w.fetch = async (u, o) => { if (String(u).includes("/api/")) fetched = true; return orig(u, o); };
+    const xp0 = S.xp; w.eval("S.microLog={}; S.lastDay=daysAgo(1); S.streak=2; setTab('oggi'); renderMicro();");
+    const q = sel => w.document.querySelector(sel);
+    if (!/UNA CARTA/.test(w.eval("overlay.textContent"))) throw new Error("card step missing");
+    q('#mcFlip').click(); q('#mcYes').click();
+    for (let k = 0; k < 2; k++) {
+      if (!/SCELTA/.test(w.eval("overlay.textContent"))) throw new Error("scelta step " + k + " missing");
+      const opts = w.document.querySelectorAll('.sheet .qopt'); opts[0].click(); q('#mcN').click();
+    }
+    if (!/ASCOLTA E RIPETI/.test(w.eval("overlay.textContent"))) throw new Error("shadow step missing");
+    q('#mcTa').value = "qualcosa di diverso"; q('#mcCheck').click();
+    if (!q('#mcDone')) throw new Error("no done button"); q('#mcDone').click();
+    w.fetch = orig;
+    if (fetched) throw new Error("micro-session hit the network");
+    if (!S.microLog[w.eval("today()")]) throw new Error("microLog not set");
+    if (S.xp !== xp0 + 10) throw new Error("xp " + (S.xp - xp0));
+    if (S.streak !== 3) throw new Error("streak " + S.streak);
+    if (!/done/.test(w.document.querySelector("#microRow").className)) throw new Error("micro row not marked done");
+  });
+
   console.log(results.join("\n"));
   const fails = results.filter(r=>r[0]==="✗").length;
   console.log(fails ? "\n"+fails+" FAILURES" : "\nALL PASS");
