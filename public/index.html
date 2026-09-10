@@ -76,6 +76,8 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
 input,textarea,select{font-family:inherit;font-size:1rem;color:var(--ink)}
 ::selection{background:var(--giallo);color:var(--on-giallo)}
 .pro-mark{font-family:var(--font-m);font-size:.62rem;letter-spacing:.06em;font-weight:700;color:var(--giallo);vertical-align:middle}
+.tap{cursor:pointer;text-decoration:underline dotted;opacity:.75}
+details.en{margin:6px 0}details.en>summary{cursor:pointer;font-family:var(--font-m);font-size:.7rem;letter-spacing:.06em;color:var(--ink2);list-style:none}details.en>summary::-webkit-details-marker{display:none}
 ::placeholder{color:var(--muted2)}
 
 /* ============ APP SHELL ============ */
@@ -1213,7 +1215,7 @@ function renderOggi(){
       <button class="btn sm" id="bPacks" style="flex:1.4;background:var(--verde);color:#fff">📦 Vocab packs<br><span style="font-size:.64rem;font-weight:400">10 words per context</span></button>
       <button class="btn sm" id="bBoost" style="flex:1;background:var(--carta2)">⚡ Boost<br><span style="font-size:.64rem;font-weight:400">+5 frequency</span></button>
     </div>
-    ${brutaleRow()}${proRow()}
+    ${brutaleRow()}${bambinoRow()}${proRow()}
     <div class="eyebrow b">LA SETTIMANA</div>
     <div class="card" style="padding:12px">${weekStrip()}</div>
     <div class="card" style="margin-top:14px;background:var(--carta2)">
@@ -1237,6 +1239,7 @@ function renderOggi(){
   $('#chiccaRow').onclick=()=>openChicca();
   wireBrutale(renderOggi);
   const pr=$('#proRow'); if(pr) pr.onclick=()=>upgradeSheet('esame_scritta');
+  $('#bambRow').onclick=bambinoSheet;
   $('#bDett').onclick=renderDettato;
   $('#bSpr').onclick=renderSprint;
   $('#bScelta').onclick=renderScelta;
@@ -1310,7 +1313,10 @@ function renderDettato(){
       const hits=T.filter((w,i)=>U[i]===w).length, pct=Math.round(hits/T.length*100);
       if(pct>=70) score++;
       $('#dFb').innerHTML=`<div class="feedback-box"><b>${pct}% — ${pct>=90?'orecchio d\'oro 🏆':pct>=70?'molto bene ✓':'riascolta e riprova domani'}</b><br><br>${diff}</div>
+      <button class="btn yellow block" id="dRep" style="margin-top:10px">🎙 Ora ripetila ad alta voce (shadowing)</button><div id="dRepFb"></div>
       <button class="btn green block" id="dNext" style="margin-top:10px">${round<2?'Next sentence →':'Finish →'}</button>`;
+      $('#dRep').onclick=()=>{ $('#dRep').textContent='🔴 Ti ascolto…'; speak(target,0.88);
+        setTimeout(()=>listen(h=>{ const ok=similar(h,target); if(ok) gainXP(5); $('#dRep').textContent='🎙 Ancora'; $('#dRepFb').innerHTML=`<div class="feedback-box" style="margin-top:6px">${ok?'🎯 Presa — +5 XP':'Quasi — riascolta e ripeti'}<br><span class="muted">tu: ${esc(h)}</span></div>`; },null,()=>{ $('#dRep').textContent='🎙 Microfono non disponibile'; }), 900); };
       $('#dCheck').style.display='none';
       $('#dNext').onclick=()=>{round++;play();};
     };
@@ -1403,7 +1409,7 @@ function renderScrivi(){
     $('#scriviGo').innerHTML='<span class="spinner"></span>'; $('#scriviGo').disabled=true;
     const fb = await ai([{role:'user',content:`Student level: ${S.level}. Prompt: "${p}". Their Italian text: """${txt}"""
 Respond ONLY with JSON:
-{"corrected":"their text, fixed, natural","fixes":["error → fix → 5-word why" x2 max],"upgrade":"a more native way to say one of their phrases","errs":[{"t":"one of: ${ERR_TAX_KEYS}","w":"their wrong phrase","r":"corrected phrase"} for each REAL error, empty if none]}`}], S.brutale?'You are a brutally funny Italian best friend correcting a mate\'s writing — colloquial roast tone in the fixes, parolacce welcome, roast the mistakes never the person, and every correction stays precise. JSON only.':'You are an encouraging Italian teacher. Concise, specific, never condescending. JSON only.',true,1000,'scrivi');
+{"corrected":"their text, fixed, natural","fixes":["error → fix → 5-word why" x2 max],"upgrade":"a more native way to say one of their phrases","errs":[{"t":"one of: ${ERR_TAX_KEYS}","w":"their wrong phrase","r":"corrected phrase"} for each REAL error, empty if none]}`}], S.brutale?'You are a brutally funny Italian best friend correcting a mate\'s writing — colloquial roast tone in the fixes, parolacce welcome, roast the mistakes never the person, and every correction stays precise. JSON only.':'You are an encouraging Italian teacher. Concise, specific, never condescending. JSON only.'+langRules(),true,1000,'scrivi');
     if(!fb||!fb.corrected){ $('#scriviFb').innerHTML='<div class="feedback-box">⚠ Hiccup — tap again.</div>'; $('#scriviGo').disabled=false; $('#scriviGo').textContent='Correct me →'; return; }
     logErrs(fb.errs,'scrivi');
     $('#scriviFb').innerHTML=`<div class="feedback-box">✅ <b>Versione corretta:</b>\n${esc(fb.corrected)}\n\n${(fb.fixes||[]).map(f=>'🔧 '+esc(f)).join('\n')}${fb.upgrade?'\n\n⭐ '+esc(fb.upgrade):''}${(fb.errs||[]).length?'\n\n🗺 '+fb.errs.length+' error'+(fb.errs.length>1?'s':'')+' tagged in your gap map':''}</div>`;
@@ -1481,7 +1487,7 @@ Respond ONLY with JSON:
 "note":"one-line copy-into-your-notebook summary: rule core + hook, max 18 words, no jargon",
 "drills":[{"q":"question (can include ___ gaps)","options":["4 options"],"answer":0,"why":"8-word explanation, plain English, no terminology"} x5 — calibrate difficulty to ${lv}],
 "speak":{"prompt":"a single sentence the learner must say aloud in Italian, using today's grammar","model":"the model Italian sentence"},
-"newcards":[{"it":"word/phrase from this lesson","en":"meaning","mn":"mnemonic","ex":"example sentence"} x2]}`}],'You are a brilliant Italian curriculum designer. JSON only, no markdown fences. Drills must genuinely test the concept. Explain grammar by English parallel, never by terminology.',true,3200,'lesson_ai');
+"newcards":[{"it":"word/phrase from this lesson","en":"meaning","mn":"mnemonic","ex":"example sentence"} x2]}`}],'You are a brilliant Italian curriculum designer. JSON only, no markdown fences. Drills must genuinely test the concept. Explain grammar by English parallel, never by terminology.'+langRules(),true,3200,'lesson_ai');
 }
 async function openLesson(unit, lv){
   const hd=`<div class="eyebrow r">${lv} · ${esc(unit.t)}</div>`;
@@ -1550,24 +1556,24 @@ async function openLesson(unit, lv){
     <div class="concept fadein">
       <div class="eyebrow" style="color:var(--giallo)">IL CONCETTO</div>
       <h2>${esc(lesson.concept.title)}</h2>
-      <ul style="padding-left:18px;margin-top:6px">${lesson.concept.bullets.map(b=>`<li style="margin-bottom:4px;font-size:.92rem">${esc(b)}</li>`).join('')}</ul>
-      ${lesson.concept.examples.map(e=>`<div class="ex"><b>${esc(e.it)}</b> <button class="spk" onclick="speak('${esc(e.it).replace(/'/g,"\\'")}')" style="color:var(--giallo);background:none;border:none;cursor:pointer">🔊</button><br><span style="opacity:.8">${esc(e.en)}</span></div>`).join('')}
+      ${enBlock(`<ul style="padding-left:18px;margin-top:6px">${lesson.concept.bullets.map(b=>`<li style="margin-bottom:4px;font-size:.92rem">${esc(b)}</li>`).join('')}</ul>`,'la spiegazione')}
+      ${lesson.concept.examples.map(e=>`<div class="ex"><b>${esc(e.it)}</b> <button class="spk" onclick="speak('${esc(e.it).replace(/'/g,"\\'")}')" style="color:var(--giallo);background:none;border:none;cursor:pointer">🔊</button><br>${enReveal(e.en,'tr','opacity:.8;font-style:normal;color:inherit')}</div>`).join('')}
     </div>
-    ${(lesson.concept.bridge&&lesson.concept.bridge.length)?`
+    ${(lesson.concept.bridge&&lesson.concept.bridge.length&&(S.scaffold||0)<2)?`
     <div class="eyebrow" style="color:var(--verde)">🌉 IL PONTE · you already say this in English</div>
     ${lesson.concept.bridge.map(p=>`<div class="ponte">
       <span class="pen">🇬🇧 ${esc(p.en)}</span>
       <span class="pit">🇮🇹 ${esc(p.it)} <button class="spk" onclick="speak('${esc(p.it).replace(/'/g,"\\'")}')" style="background:none;border:none;cursor:pointer">🔊</button></span>
     </div>`).join('')}`:''}
-    <div class="mnemo"><div class="eyebrow">🧠 MNEMONIC HOOK</div>${esc(lesson.mnemonic)}</div>
-    ${lesson.note?`<div class="nota"><div class="eyebrow">📝 LA NOTA · the one-liner for your notebook</div><b style="font-size:.92rem">${esc(lesson.note)}</b></div>`:''}
+    ${enBlock(`<div class="mnemo"><div class="eyebrow">🧠 MNEMONIC HOOK</div>${esc(lesson.mnemonic)}</div>
+    ${lesson.note?`<div class="nota"><div class="eyebrow">📝 LA NOTA · the one-liner for your notebook</div><b style="font-size:.92rem">${esc(lesson.note)}</b></div>`:''}`,'gancio e nota')}
     <button class="btn primary block" id="startDrills">Drill it → (5 quick ones)</button>
     ${lesson.fromBank&&(S.lessonVisits[unit.id]||0)>0?`<button class="btn sm block" id="newQs" style="margin-top:8px;background:var(--carta2)">🔄 Nuove domande — 5 fresh ones from the AI</button>`:''}`);
   $('#startDrills').onclick=drillView;
   const nq=$('#newQs'); if(nq) nq.onclick=async()=>{
     nq.innerHTML='<span class="spinner"></span> writing 5 new questions…'; nq.disabled=true;
     const res=await ai([{role:'user',content:`Italian micro-lesson "${unit.t}" (${unit.d}), level ${lv}. Its one-line rule: ${lesson.note||''}. Two example drills (match this style and JSON shape exactly): ${JSON.stringify(lesson.drills.slice(0,2))}.
-Write 5 NEW drills on the same rule — different sentences, no repeats — each with 4 options, "answer" index, a plain-English "why" (max 10 words, no grammar terminology), and "err" chosen from: ${ERR_TAX_KEYS}. Respond ONLY with JSON: {"drills":[...]}`}],'Meticulous Italian drill author. JSON only.',true,900,'nuove');
+Write 5 NEW drills on the same rule — different sentences, no repeats — each with 4 options, "answer" index, a plain-English "why" (max 10 words, no grammar terminology), and "err" chosen from: ${ERR_TAX_KEYS}. Respond ONLY with JSON: {"drills":[...]}`}],'Meticulous Italian drill author. JSON only.'+langRules(),true,900,'nuove');
     if(!res||!Array.isArray(res.drills)||!res.drills.length){ nq.textContent='⚠ Nothing came back — try again'; nq.disabled=false; return; }
     const ok=res.drills.filter(d=>d&&d.q&&Array.isArray(d.options)&&d.options.length===4&&Number.isInteger(d.answer)&&d.answer>=0&&d.answer<4);
     const ex=S.lessonExtra[unit.id]||(S.lessonExtra[unit.id]=[]); ok.forEach(d=>ex.push(d)); if(ex.length>10) ex.splice(0,ex.length-10); save();
@@ -1597,7 +1603,7 @@ async function openCheckpoint(unit,lv){
   $('#startEx').onclick=async()=>{
     const cpBank=(typeof CHECKPOINT_QS!=='undefined')&&CHECKPOINT_QS[lv];
     if(!cpBank) sheetBody(`<div style="text-align:center;padding:40px 0"><span class="spinner"></span><p class="muted" style="margin-top:8px">The examiner is preparing…</p></div>`);
-    const qs = cpBank ? {questions:pickCheckpointQs(cpBank, lv)} : await ai([{role:'user',content:`Generate 3 oral exam questions for CEFR ${lv} Italian (themes from this level: ${CURRICULUM[lv].map(u=>u.t).join(', ')}). Make 1 question themed on the learner's interests (${S.interests.join(', ')||'everyday life'}) if level is A2+. Respond ONLY with JSON: {"questions":["q1 in Italian","q2","q3"]}`}],'JSON only.',true,1000,'checkpoint');
+    const qs = cpBank ? {questions:pickCheckpointQs(cpBank, lv)} : await ai([{role:'user',content:`Generate 3 oral exam questions for CEFR ${lv} Italian (themes from this level: ${CURRICULUM[lv].map(u=>u.t).join(', ')}). Make 1 question themed on the learner's interests (${S.interests.join(', ')||'everyday life'}) if level is A2+. Respond ONLY with JSON: {"questions":["q1 in Italian","q2","q3"]}`}],'JSON only.'+langRules(),true,1000,'checkpoint');
     if(!qs||!qs.questions){ sheetBody('<div class="card">⚠ Connection issue — reopen the checkpoint.</div>'); return; }
     let qi=0; const answers=[];
     function ask(){
@@ -1617,12 +1623,13 @@ async function openCheckpoint(unit,lv){
     }
     async function grade(){
       sheetBody(`<div style="text-align:center;padding:40px 0"><span class="spinner"></span><p class="muted" style="margin-top:8px">Grading…</p></div>`);
-      const res = await ai([{role:'user',content:`CEFR ${lv} oral exam. Q&A pairs: ${JSON.stringify(answers)}. Respond ONLY with JSON: {"pass":true|false,"score":"X/10","feedback":"3 short bullet points: what was good, the #1 grammar issue, the #1 thing to drill next. Plain text with • bullets."}`}],'Fair but rigorous Italian oral examiner. Pass requires genuinely adequate level performance, but reward communication over perfection. JSON only.',true,1000,'checkpoint');
+      const res = await ai([{role:'user',content:`CEFR ${lv} oral exam. Q&A pairs: ${JSON.stringify(answers)}. Respond ONLY with JSON: {"pass":true|false,"score":"X/10","feedback":"3 short bullet points: what was good, the #1 grammar issue, the #1 thing to drill next. Plain text with • bullets."}`}],'Fair but rigorous Italian oral examiner. Pass requires genuinely adequate level performance, but reward communication over perfection. JSON only.'+langRules(),true,1000,'checkpoint');
       if(!res){ sheetBody('<div class="card">⚠ Grading failed — reopen and retry.</div>'); return; }
       if(res.pass){
         S.unitsDone[unit.id]=true;
         if(S.levelIdx<5 && lv===S.level){ S.levelIdx++; S.level=LEVELS[S.levelIdx]; }
         gainXP(100); touchStreak(); save(); celebrate(56);
+        const wantSc=Math.max(0,Math.min(3,S.levelIdx-1)); if((S.scaffold||0)<wantSc) setTimeout(()=>toast(BAMBINO[wantSc][0]+' Sei '+S.level+': prova la modalità bambino '+wantSc+' — meno inglese, più italiano.'),1800);
       }
       sheetBody(`
         <div style="text-align:center;padding:10px 0">
@@ -1723,7 +1730,7 @@ function renderParla(){
 
 function convoSystem(s){
   return `You are an Italian conversation partner inside a language app. Scenario: "${s.t}" — ${s.d}. Learner level: ${S.level}. Learner interests: ${S.interests.join(', ')}. ${s.id==='paziente'?'You play a PATIENT with a realistic presenting complaint (pick one: chest pain, persistent cough, abdominal pain, headache). Reveal details only when asked correctly, like a real anamnesi. The learner is the doctor.':''} ${s.id==='collega'?'You are a friendly specializzanda in oncologia discussing a realistic case.':''} ${s.id==='girovisite'?`You are the strutturato (attending) on morning rounds in the reparto di ${s.ward||'Medicina Interna'}. Invent ONE realistic inpatient typical of this ward (inspiration: ${s.seeds||'a common admission'}) — give name, age, day of admission. Open by asking the learner (the student on rotation) to present the patient or answer a focused question. Probe their clinical reasoning with short pimping questions appropriate to the ward, gently correct clinical Italian terminology, and reveal new findings (labs, imaging, overnight events) as the round progresses.`:''} ${s.id==='congresso'?'You are an Italian oncologist at a medical congress coffee break. Chat about research, ask about their poster and research interests, use realistic academic small talk.':''} ${s.id==='questura'?'You are an impiegato at the questura/anagrafe counter. The learner needs to sort out a realistic document issue (permesso renewal, cambio di residenza, carta d\'identità). Be realistically brisk and bureaucratic: ask for documents, mention marca da bollo, moduli, appuntamenti — use authentic sportello language (Lei form). If they use tu or informal register, gently model the formal version in your fix.':''} ${s.id==='telefonata'?'You are a call-center operator for an Italian public office or utility (pick one: comune, Agenzia delle Entrate, energy provider). The learner is calling about a realistic problem (wrong bill, missing document, appointment). Use formal phone Italian: "Mi dica", "Resti in linea", "Le passo l\'ufficio competente". Make them navigate hold-music bureaucracy realistically but resolvably.':''}
-RULES: Reply in Italian calibrated slightly above ${S.level} (i+1). Keep replies SHORT (1-3 sentences) and always end with something that invites a response. Stay in character. ANTI-SCRIPT RULE: every 3rd-4th turn, push the conversation somewhere plausible but UNEXPECTED within the scenario (a complication, a question they can't have rehearsed, a change of plan) so the learner must improvise, never recite.${roastRules()?roastRules()+' Apply this tone to the "fix" and "nat" fields only — your in-character "reply" stays in character.':''}
+RULES: Reply in Italian calibrated slightly above ${S.level} (i+1). Keep replies SHORT (1-3 sentences) and always end with something that invites a response. Stay in character. ANTI-SCRIPT RULE: every 3rd-4th turn, push the conversation somewhere plausible but UNEXPECTED within the scenario (a complication, a question they can't have rehearsed, a change of plan) so the learner must improvise, never recite.${roastRules()?roastRules()+' Apply this tone to the "fix" and "nat" fields only — your in-character "reply" stays in character.':''}${(S.scaffold||0)>=2?' MODALITÀ BAMBINO: set "translation" to an empty string. If the learner erred, RECAST — your "reply" must naturally re-use the corrected form in its first sentence — and "fix" holds only the corrected phrase (no explanation); "nat" likewise. Any note is in simple Italian.':''}
 After your Italian reply, respond ONLY with JSON: {"reply":"your in-character Italian","translation":"English translation","fix":"if the learner's last message had a GRAMMAR error: the corrected phrase + 6-word explanation; else empty string","nat":"if their last message was grammatically fine but UNNATURAL (no native would phrase it that way): the natural version; else empty string","errs":[{"t":"error taxonomy key — one of: ${ERR_TAX_KEYS}","w":"the learner's wrong phrase verbatim","r":"the corrected phrase"} — one entry per REAL error in their last message, empty array if none or if they haven't spoken yet]}`;
 }
 
@@ -1770,7 +1777,7 @@ async function stealWord(){
   const last=lastAIText();
   if(!last){ toast('Nothing to steal yet — get them talking'); return; }
   const b=$('#stealBtn'); b.innerHTML='<span class="spinner"></span>'; b.disabled=true;
-  const res = await ai([{role:'user',content:`From this Italian sentence, pick the single most useful word or short phrase for a ${S.level} learner (skip ultra-basic words they obviously know): "${last}"\nRespond ONLY with JSON: {"it":"word/phrase","en":"meaning","mn":"vivid English mnemonic, max 16 words","ex":"the original sentence or a short example"}`}],'Vocabulary coach. JSON only.',true,1000,'stealword');
+  const res = await ai([{role:'user',content:`From this Italian sentence, pick the single most useful word or short phrase for a ${S.level} learner (skip ultra-basic words they obviously know): "${last}"\nRespond ONLY with JSON: {"it":"word/phrase","en":"meaning","mn":"vivid English mnemonic, max 16 words","ex":"the original sentence or a short example"}`}],'Vocabulary coach. JSON only.'+langRules(),true,1000,'stealword');
   b.disabled=false; b.innerHTML='🪤 Steal a word → Ripasso';
   if(!res||!res.it){ toast('Hiccup — try again'); return; }
   const id='steal-'+res.it.toLowerCase().replace(/\W/g,'');
@@ -1796,7 +1803,7 @@ function replaceLastAI(res){
   const last=[...log.querySelectorAll('.bub.ai')].pop();
   if(!last) return; // user navigated away while the reply was in flight
   if(!res||!res.reply){ last.innerHTML='⚠ Connection hiccup — send again.'; return; }
-  last.innerHTML=`${esc(res.reply)} <button class="spk">🔊</button><span class="tr">${esc(res.translation||'')}</span>`;
+  last.innerHTML=`${esc(res.reply)} <button class="spk">🔊</button>${enReveal(res.translation,'tr')}`;
   last.querySelector('.spk').onclick=()=>speak(res.reply);
   convo.push({role:'assistant',content:JSON.stringify(res)});
   speak(res.reply);
@@ -1860,7 +1867,7 @@ function renderMed(){
     const txt=$('#presTa').value.trim();
     if(txt.length<30){toast('Give me at least a few lines, dottoressa');return;}
     $('#presGo').innerHTML='<span class="spinner"></span>'; $('#presGo').disabled=true;
-    const fb=await ai([{role:'user',content:`A medical student (Italian level ${S.level}) presented this fictional patient in Italian: """${txt}"""\nGrade it like a kind attending at an Italian teaching hospital. Plain text, under 130 words:\n🩺 STRUCTURE: did it follow paziente→motivo→anamnesi→obiettività→piano? what's missing\n🔧 LANGUAGE: top 2 Italian fixes (error → correction)\n⭐ NATIVE UPGRADE: one phrase rewritten as a real Italian doctor would say it`}],'You are a supportive Italian attending physician and language coach.',false,1000,'med');
+    const fb=await ai([{role:'user',content:`A medical student (Italian level ${S.level}) presented this fictional patient in Italian: """${txt}"""\nGrade it like a kind attending at an Italian teaching hospital. Plain text, under 130 words:\n🩺 STRUCTURE: did it follow paziente→motivo→anamnesi→obiettività→piano? what's missing\n🔧 LANGUAGE: top 2 Italian fixes (error → correction)\n⭐ NATIVE UPGRADE: one phrase rewritten as a real Italian doctor would say it`}],'You are a supportive Italian attending physician and language coach.'+langRules(),false,1000,'med');
     $('#presFb').innerHTML=`<div class="feedback-box">${esc(fb)}</div>`;
     gainXP(25); $('#presGo').textContent='✓ Graded · try another'; $('#presGo').disabled=false;
   };
@@ -1956,7 +1963,8 @@ function renderSRS(){
       $('#bk').onclick=()=>setTab('oggi'); return; }
     const c=due[i];
     const isFix = c.kind==='fix';
-    const production = !isFix && (c.ivl||0)>=7; // mature cards flip direction: EN → produce the Italian
+    const production = !isFix && (c.ivl||0)>=((S.scaffold||0)>=2?3:7); // mature cards flip direction: EN → produce the Italian (earlier in modalità bambino)
+    const cloze = (S.scaffold||0)>=2 && !isFix && c.ex && c.it && c.ex.toLowerCase().includes(c.it.toLowerCase()) ? c.ex.replace(new RegExp(c.it.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'i'),'___') : null;
     const leech = (c.lapses||0)>=4;
     main.innerHTML=`
     <div class="fadein">
@@ -1970,9 +1978,13 @@ function renderSRS(){
           <div style="font-size:1.05rem;font-weight:600;text-decoration:line-through;opacity:.75">${esc(c.en)}</div>
           <div class="muted" style="font-size:.74rem">${esc(c.ex)}</div>`
           :production?`
-          <div class="eyebrow">SAY IT IN ITALIAN</div>
-          <div class="word" style="font-size:1.25rem">${esc(c.en)}</div>
-          <input class="ti" id="prodIn" placeholder="type it (optional)…" autocapitalize="off" style="max-width:90%;text-align:center">`
+          <div class="eyebrow">${cloze?'COMPLETA LA FRASE':'SAY IT IN ITALIAN'}</div>
+          <div class="word" style="font-size:${cloze?'1.05rem':'1.25rem'}">${esc(cloze||c.en)}</div>
+          <input class="ti" id="prodIn" placeholder="${cloze?'la parola che manca…':'type it (optional)…'}" autocapitalize="off" style="max-width:90%;text-align:center">`
+          :cloze?`
+          <div class="eyebrow">CHE PAROLA MANCA?</div>
+          <div class="word" style="font-size:1.05rem">${esc(cloze)}</div>
+          <button class="btn sm yellow" id="sayIt">🔊 ascolta</button>`
           :`
           <div class="eyebrow">WHAT DOES IT MEAN?</div>
           <div class="word">${esc(c.it)}</div>
@@ -1981,7 +1993,7 @@ function renderSRS(){
         </div>
         <div class="srsface back">
           <div class="word">${esc(c.it)}</div>
-          ${isFix?'':`<div style="font-size:1.05rem;font-weight:600">${esc(c.en)}</div>`}
+          ${isFix?'':(S.scaffold||0)>=2?'':(S.scaffold||0)>=1?enReveal(c.en,'tr','font-size:1rem;font-style:normal;color:inherit'):`<div style="font-size:1.05rem;font-weight:600">${esc(c.en)}</div>`}
           <div id="prodFb"></div>
           ${c.mn?`<div style="background:var(--giallo);color:var(--on-giallo);border-radius:10px;padding:8px 12px;font-size:.82rem">🧠 ${esc(c.mn)}</div>`:''}
           ${c.ex&&!isFix?`<div style="font-size:.8rem;opacity:.8;font-style:italic">"${esc(c.ex)}"</div>`:''}
@@ -2007,10 +2019,10 @@ function renderSRS(){
     };
     const pi=$('#prodIn'); if(pi){ pi.focus(); pi.addEventListener('keydown',e=>{if(e.key==='Enter')$('#flipB').click();}); }
     const rm=$('#reMn'); if(rm) rm.onclick=async()=>{ rm.innerHTML='<span class="spinner"></span>';
-      const m=await ai([{role:'user',content:`The learner keeps forgetting the Italian ${isFix?'grammar fix':'word'} "${c.it}" (${c.en}). Their old mnemonic failed: "${c.mn||'(none)'}". Create a COMPLETELY different, vivid, slightly absurd English mnemonic (max 18 words). Mnemonic only.`}],'Mnemonic genius. Output the sentence only.',false,1000,'mnemonic');
+      const m=await ai([{role:'user',content:`The learner keeps forgetting the Italian ${isFix?'grammar fix':'word'} "${c.it}" (${c.en}). Their old mnemonic failed: "${c.mn||'(none)'}". Create a COMPLETELY different, vivid, slightly absurd English mnemonic (max 18 words). Mnemonic only.`}],'Mnemonic genius. Output the sentence only.'+langRules(),false,1000,'mnemonic');
       if(m){ c.mn=m.trim(); c.lapses=1; save(); show(); } };
     const gm=$('#genMn'); if(gm) gm.onclick=async()=>{ gm.innerHTML='<span class="spinner"></span>';
-      const m=await ai([{role:'user',content:`Create one vivid, slightly absurd English mnemonic (max 18 words) for the Italian word "${c.it}" meaning "${c.en}". Respond with the mnemonic only.`}],'Mnemonic genius. Output the mnemonic sentence only.',false,1000,'mnemonic');
+      const m=await ai([{role:'user',content:`Create one vivid, slightly absurd English mnemonic (max 18 words) for the Italian word "${c.it}" meaning "${c.en}". Respond with the mnemonic only.`}],'Mnemonic genius. Output the mnemonic sentence only.'+langRules(),false,1000,'mnemonic');
       c.mn=m.trim(); save(); show(); setTimeout(()=>{$('#srsIn').classList.add('flip');$('#grades').style.visibility='visible';},50); };
     document.querySelectorAll('#grades .btn').forEach(b=>b.onclick=()=>{ gradeCard(c,+b.dataset.g); i++; show(); });
   }
@@ -2207,7 +2219,7 @@ function renderVerbi(){
   $('#vbAskGo').onclick=async()=>{
     const q=$('#vbAsk').value.trim(); if(q.length<5){toast('Type your question first');return;}
     $('#vbAskGo').innerHTML='<span class="spinner"></span>'; $('#vbAskGo').disabled=true;
-    const fb=await ai([{role:'user',content:`An Italian learner at level ${S.level} asks about verbs/conjugation: "${q}". Explain clearly and SHORT (under 110 words). If congiuntivo is involved, name the trigger. Give one extra example. They do NOT remember grammar terminology — never explain by naming tenses; instead show the matching English construction in quotes (e.g. "it's the ‘I had done' move"). Plain text, no markdown headers. Be encouraging — they find Italian grammar overwhelming.`}],'You are a patient Italian grammar tutor who makes grammar feel logical, not scary. You explain by English parallel, never by terminology.',false,1000,'tutor');
+    const fb=await ai([{role:'user',content:`An Italian learner at level ${S.level} asks about verbs/conjugation: "${q}". Explain clearly and SHORT (under 110 words). If congiuntivo is involved, name the trigger. Give one extra example. They do NOT remember grammar terminology — never explain by naming tenses; instead show the matching English construction in quotes (e.g. "it's the ‘I had done' move"). Plain text, no markdown headers. Be encouraging — they find Italian grammar overwhelming.`}],'You are a patient Italian grammar tutor who makes grammar feel logical, not scary. You explain by English parallel, never by terminology.'+langRules(),false,1000,'tutor');
     $('#vbAskFb').innerHTML=`<div class="feedback-box">${esc(fb)}</div>`;
     $('#vbAskGo').textContent='Ask another →'; $('#vbAskGo').disabled=false;
   };
@@ -2612,11 +2624,51 @@ function roastFb(ok){
   if(!S.brutale) return '';
   const b = ok ? ROAST_PRAISE : ROAST_BANK;
   const r = b[Math.floor(Math.random()*b.length)];
-  return `<span class="roast">${esc(r[0])} <span class="muted" style="font-size:.74rem;font-style:normal">${esc(r[1])}</span></span>`;
+  return `<span class="roast">${esc(r[0])} ${(S.scaffold||0)>=2?'':`<span class="muted" style="font-size:.74rem;font-style:normal">${esc(r[1])}</span>`}</span>`;
 }
 /* One-sentence tone order appended to prompts that ALREADY run — costs ~0 extra tokens */
 function roastRules(){
   return S.brutale ? ' TONE (modalità brutale — the learner opted in and finds it motivating): deliver corrections like a foul-mouthed Italian best friend roasting them — colloquial, theatrical despair, parolacce welcome (cazzo, che cavolo, ma dai). Roast the MISTAKE, never their intelligence, and keep the actual correction/explanation precise.' : '';
+}
+/* ---------- MODALITÀ BAMBINO — the scaffold dial: 0 Ponte · 1 Sussurro · 2 Italiano · 3 Madrelingua ----------
+   Children get comprehensible input, chunks and recasts — no translation, no metalanguage. The English bridges
+   are the right scaffold at A1–B1; this dial takes them away one notch at a time so the learner stops translating. */
+const BAMBINO=[
+ ['🌉','Ponte','English bridges and translations everywhere — the scaffold at full height'],
+ ['🤫','Sussurro','English still exists, but hidden behind a tap. Try Italian first, peek if you must'],
+ ['🇮🇹','Italiano','No translations: Italian paraphrases, cloze cards, recasts instead of fixes. The AI explains in simple Italian'],
+ ['🧒','Madrelingua','Not one English word anywhere. Retell, describe, shadow. Corrections by recast only']
+];
+function langRules(){
+  const s=S.scaffold||0; if(s<2) return '';
+  const base=' LANGUAGE OVERRIDE — modalità bambino livello '+s+': the learner is weaning off translation. Ignore any earlier request for English. Write every explanation, "why", feedback, mnemonic, definition and coaching line in SIMPLE ITALIAN (A2 vocabulary, short sentences); where a translation was requested give an Italian paraphrase instead. Never name grammar terms — show the pattern with two Italian examples. Keep every JSON key and shape exactly as specified.';
+  return s>=3 ? base+' Absolutely no English anywhere, not even single words. Correct by RECASTING: first restate the learner\'s idea in correct natural Italian, then at most one short note.' : base;
+}
+/* English shown as-is (0), behind a tap (1), or not at all (2+). */
+function enReveal(text, cls, style){
+  const s=S.scaffold||0; if(!text||s>=2) return '';
+  if(s>=1) return `<span class="${cls||'tr'} tap" style="${style||''}" data-en="${esc(text)}" onclick="this.textContent=this.dataset.en;this.classList.remove('tap')">🇬🇧 tocca per l'inglese</span>`;
+  return `<span class="${cls||'tr'}" style="${style||''}">${esc(text)}</span>`;
+}
+function enBlock(html, label){
+  const s=S.scaffold||0; if(s>=3) return ''; if(s===0) return html;
+  return `<details class="en"><summary>🇬🇧 ${esc(label||'in inglese')}${s>=2?' (solo se serve)':''}</summary>${html}</details>`;
+}
+function bambinoRow(){
+  const s=S.scaffold||0, b=BAMBINO[s];
+  return `<button class="mission" id="bambRow" style="${s?'border-left:5px solid var(--verde);':''}">
+    <span style="font-size:1.3rem">${b[0]}</span>
+    <span><b>Modalità bambino · ${b[1]}${s?' ('+s+'/3)':''}</b><br><span class="muted">${s?esc(b[2]):'Learn like a child, not like an adult: turn the English down one notch at a time until you stop translating'}</span></span>
+    <span class="st-go" style="margin-left:auto">${s?'CAMBIA':'PROVA'}</span></button>`;
+}
+function bambinoSheet(){
+  const s=S.scaffold||0;
+  showSheet('<div class="eyebrow r">🧒 MODALITÀ BAMBINO · QUANTO INGLESE?</div>',`
+    <div class="card" style="background:var(--panel);color:var(--panel-tx)"><h2>I bambini non traducono. Imparano a pezzi, ascoltano, ripetono, sbagliano e vengono corretti ripetendo.</h2>
+    <p style="font-size:.86rem;opacity:.9">Il ponte inglese è giusto all'inizio. Poi va tolto — un gradino alla volta. Sali quando il livello sotto ti sembra facile; scendi senza vergogna quando serve.</p></div>
+    ${BAMBINO.map((b,i)=>`<button class="qopt ${i===s?'right':''}" data-sc="${i}" style="text-align:left"><b>${b[0]} ${i} · ${b[1]}</b><br><span class="muted" style="font-size:.8rem">${esc(b[2])}</span></button>`).join('')}
+    <p class="muted" style="font-size:.78rem;margin-top:8px">Consiglio: A1–A2 → 0 · B1 → 1 · B2 → 2 · C1+ → 3. Le Regole (§) restano in inglese: sono un manuale, non una lezione.</p>`);
+  document.querySelectorAll('[data-sc]').forEach(b=>b.onclick=()=>{ S.scaffold=+b.dataset.sc; save(); toast(BAMBINO[S.scaffold][0]+' Modalità bambino: '+BAMBINO[S.scaffold][1]); closeSheet(); if(TAB==='oggi') renderOggi(); });
 }
 function brutaleRow(){
   return `<button class="mission" id="brutRow" style="${S.brutale?'border-left:5px solid var(--rosso);':''}">
@@ -2641,7 +2693,7 @@ function openChicca(idx){
   showSheet(`<div class="eyebrow r">🍋 LA CHICCA ${i===chiccaIdx()?'DI OGGI':'· '+(i+1)+'/'+CHICCA_BANK.length}</div>`,`
     <div class="card" style="background:var(--panel);color:var(--panel-tx)">
       <h2 style="font-size:1.25rem">${esc(c.it)} <button class="btn sm yellow" data-say="${esc(c.it)}" style="box-shadow:none;padding:3px 9px">🔊</button></h2>
-      <p style="font-size:.94rem;margin-top:4px">= ${esc(c.en)}</p>
+      ${(S.scaffold||0)>=2?'':`<p style="font-size:.94rem;margin-top:4px">${(S.scaffold||0)>=1?enReveal('= '+c.en,'tr','font-style:normal;color:inherit'):'= '+esc(c.en)}</p>`}
       ${c.lit?`<p style="font-size:.78rem;opacity:.7;margin-top:2px">literally: “${esc(c.lit)}”</p>`:''}
     </div>
     <div class="eyebrow g">📎 HEAR IT IN THE WILD</div>
@@ -2769,7 +2821,7 @@ function grammarCreate(g){
     if(s.length<8){ toast('Write a full sentence first'); return; }
     $('#gcGo').innerHTML='<span class="spinner"></span>'; $('#gcGo').disabled=true;
     const r=await ai([{role:'user',content:`An Italian learner (level ${S.level}) was asked to write one sentence using the rule "${g.t}" (core: ${g.note}). They wrote: "${s}".
-Judge it. Respond ONLY with JSON: {"usesRule":true/false,"correct":true/false,"fix":"corrected sentence, or empty if already correct","why":"max 25 words, plain English, NO grammar terminology — show the English equivalent construction in quotes instead of naming tenses${S.brutale?'; if wrong, open the why with a short colloquial Italian roast (parolacce welcome) before the explanation':''}"}`}],'Meticulous but warm Italian teacher. JSON only.'+roastRules(),true,600,'grammar');
+Judge it. Respond ONLY with JSON: {"usesRule":true/false,"correct":true/false,"fix":"corrected sentence, or empty if already correct","why":"max 25 words, plain English, NO grammar terminology — show the English equivalent construction in quotes instead of naming tenses${S.brutale?'; if wrong, open the why with a short colloquial Italian roast (parolacce welcome) before the explanation':''}"}`}],'Meticulous but warm Italian teacher. JSON only.'+roastRules()+langRules(),true,600,'grammar');
     $('#gcGo').disabled=false; $('#gcGo').textContent='Check another →';
     if(!r){ $('#gcFb').innerHTML='<div class="card">⚠ Connection hiccup — try again.</div>'; return; }
     if(r.correct && r.usesRule!==false){
@@ -2787,7 +2839,7 @@ async function grammarDrill(g){
   sheetBody('<div style="text-align:center;padding:40px 0"><span class="spinner"></span><p class="muted" style="margin-top:8px">Building a drill on: '+esc(g.t)+'…</p></div>');
   const set=await ai([{role:'user',content:`Italian grammar drill for a ${S.level} learner on the rule: "${g.t}". The rule's core: WHEN ${g.when.join(' · ')} | TRAP: ${g.trap}. Their known weak examples: ${JSON.stringify((S.errLog[g.err]||{}).ex||[])}.
 Generate 5 two-option fill-in items testing EXACTLY this rule, at least one built on the trap. Respond ONLY with JSON:
-{"items":[{"s":"sentence with ___","o":["option A","option B"],"a":0,"w":"max 14-word why, in terms of the rule"}]}`}],'Meticulous Italian grammar drill author. Both options must be real forms; only one fits the context. JSON only.',true,2200,'grammar');
+{"items":[{"s":"sentence with ___","o":["option A","option B"],"a":0,"w":"max 14-word why, in terms of the rule"}]}`}],'Meticulous Italian grammar drill author. Both options must be real forms; only one fits the context. JSON only.'+langRules(),true,2200,'grammar');
   if(!set||!set.items){ sheetBody('<div class="card">⚠ Couldn\'t build — reopen and retry.</div>'); return; }
   let i=0, correct=0;
   function show(){
@@ -2821,7 +2873,7 @@ Generate 5 two-option fill-in items testing EXACTLY this rule, at least one buil
 /* ----- Trigger drill: the actual skill — spot indicativo vs congiuntivo ----- */
 async function triggerDrill(){
   showSheet('<div class="eyebrow r">TRIGGER DRILL</div>','<div style="text-align:center;padding:40px 0"><span class="spinner"></span><p class="muted" style="margin-top:8px">Building 6 sentences…</p></div>');
-  const set = await ai([{role:'user',content:`Generate 6 Italian fill-in sentences for a ${S.level} learner practicing indicativo vs congiuntivo. Mix triggers (opinione, volontà, dubbio, emozione, congiunzioni like benché/sebbene, bisogna che) AND a couple of FACT sentences that correctly take indicativo (so che, è vero che, sono sicuro che). Respond ONLY with JSON: {"items":[{"sentence":"... ___ ...","verb":"infinitive to conjugate","options":["form A","form B"],"answer":0,"why":"8-12 word reason naming the trigger or 'fact → indicativo'"}]} — make the two options the indicativo vs congiuntivo form of the same verb/person.`}],'Italian grammar drill writer. JSON only.',true,2000,'grammar');
+  const set = await ai([{role:'user',content:`Generate 6 Italian fill-in sentences for a ${S.level} learner practicing indicativo vs congiuntivo. Mix triggers (opinione, volontà, dubbio, emozione, congiunzioni like benché/sebbene, bisogna che) AND a couple of FACT sentences that correctly take indicativo (so che, è vero che, sono sicuro che). Respond ONLY with JSON: {"items":[{"sentence":"... ___ ...","verb":"infinitive to conjugate","options":["form A","form B"],"answer":0,"why":"8-12 word reason naming the trigger or 'fact → indicativo'"}]} — make the two options the indicativo vs congiuntivo form of the same verb/person.`}],'Italian grammar drill writer. JSON only.'+langRules(),true,2000,'grammar');
   if(!set||!set.items){ sheetBody('<div class="card">⚠ Couldn\'t build — reopen the drill.</div>'); return; }
   let i=0,correct=0;
   function show(){
@@ -2928,7 +2980,7 @@ async function mentalModel(type){
   sheetBody('<div style="text-align:center;padding:40px 0"><span class="spinner"></span><p class="muted" style="margin-top:8px">Reverse-engineering the native brain…</p></div>');
   const res=await ai([{role:'user',content:`You are a linguist who explains grammar through LOGIC, not rules to memorize. A ${S.level} Italian learner keeps failing at: "${ERR_TAX[type][0]}". Their actual mistakes: ${JSON.stringify(g.ex||[])}.
 Respond ONLY with JSON:
-{"model":"the mental model a native uses WITHOUT thinking — the underlying logic/intuition, 60-90 words, vivid, no jargon","litmus":"a one-sentence test the learner can run in their head in 2 seconds to pick the right form","items":[{"s":"sentence with ___ that FORCES applying the model","o":["option A","option B"],"a":0,"w":"max 12-word why, in terms of the model"} x5]}`}],'Brilliant linguist. Logic over rules. JSON only.',true,2500,'mental');
+{"model":"the mental model a native uses WITHOUT thinking — the underlying logic/intuition, 60-90 words, vivid, no jargon","litmus":"a one-sentence test the learner can run in their head in 2 seconds to pick the right form","items":[{"s":"sentence with ___ that FORCES applying the model","o":["option A","option B"],"a":0,"w":"max 12-word why, in terms of the model"} x5]}`}],'Brilliant linguist. Logic over rules. JSON only.'+langRules(),true,2500,'mental');
   if(!res||!res.items){ sheetBody('<div class="card">⚠ Couldn\'t build — reopen and retry.</div>'); return; }
   let i=-1, correct=0;
   function show(){
@@ -2972,7 +3024,7 @@ async function repairDrill(type){
   sheetBody('<div style="text-align:center;padding:40px 0"><span class="spinner"></span><p class="muted" style="margin-top:8px">Building a repair drill from your own mistakes…</p></div>');
   const set = await ai([{role:'user',content:`A ${S.level} Italian learner keeps making this error type: "${ERR_TAX[type][0]}" (rule: ${ERR_TAX[type][1]}). Their actual recent mistakes: ${JSON.stringify(g.ex||[])}.
 Generate 5 two-option fill-in items that drill EXACTLY this weakness. Where possible, base items on their own failed sentences (fixed and varied). Respond ONLY with JSON:
-{"items":[{"s":"sentence with ___","o":["option A","option B"],"a":0,"w":"max 12-word why naming the rule"}]}`}],'Italian remedial drill writer. JSON only.',true,2000,'ripara');
+{"items":[{"s":"sentence with ___","o":["option A","option B"],"a":0,"w":"max 12-word why naming the rule"}]}`}],'Italian remedial drill writer. JSON only.'+langRules(),true,2000,'ripara');
   if(!set||!set.items){ sheetBody('<div class="card">⚠ Couldn\'t build — reopen and retry.</div>'); return; }
   let i=0, correct=0;
   function show(){
@@ -3160,7 +3212,7 @@ async function coachPlan(force){
   box.innerHTML='<div class="card" style="text-align:center"><span class="spinner"></span><p class="muted" style="margin-top:8px">Il coach studia i tuoi dati…</p></div>';
   const res=await ai([{role:'user',content:`You are a polyglot coach who takes adults to conversational fluency fast. Learner data (real, from their app): ${JSON.stringify(coachSnapshot())}.
 Prescribe EXACTLY what to do today — specific, sequenced, ~${minutes} min total (${nSteps} steps), attacking their weakest point first. If a goal/exam date is present, steer toward it; honour sessionStyle and skillFocus. Available activities (use these keys only): linea (grammar micro-lesson), parla (speaking booth), srs (flashcard review), scrivi (corrected writing), dettato (dictation), sprint (conjugation speed), scelta (tense-choice drill), esame (exam simulation), lacune (gap repair drill), pronuncia (accent drills), packs (context vocabulary), verbi (grammar rulebook: every tense + rule explained and drilled), cinema (prescribed watching), med (medical Italian).
-Respond ONLY with JSON: {"focus":"today's one-line theme, direct and specific to THEIR data","steps":[{"t":"imperative task title, specific (e.g. 'Repair passato vs imperfetto — 5 sentences')","why":"max 10 words tying it to their data","min":minutes,"go":"activity key"} x4]}`}],'Elite, direct language coach. No fluff. JSON only.',true,1500,'coach');
+Respond ONLY with JSON: {"focus":"today's one-line theme, direct and specific to THEIR data","steps":[{"t":"imperative task title, specific (e.g. 'Repair passato vs imperfetto — 5 sentences')","why":"max 10 words tying it to their data","min":minutes,"go":"activity key"} x4]}`}],'Elite, direct language coach. No fluff. JSON only.'+langRules(),true,1500,'coach');
   if(!res||!res.steps){ const f=coachFallback(); S.coachPlan={d:today(), focus:f.focus, steps:f.steps, offline:true}; save(); drawCoach(); toast('Coach offline — piano di riserva senza AI'); return; }
   S.coachPlan={d:today(), focus:res.focus, steps:res.steps.slice(0,nSteps)}; save();
   drawCoach();
@@ -3210,7 +3262,7 @@ async function buildPack(ctx){
   sheetBody('<div style="text-align:center;padding:40px 0"><span class="spinner"></span><p class="muted" style="margin-top:8px">Selecting the 10 highest-leverage words…</p></div>');
   const res=await ai([{role:'user',content:`You are a memory coach for language learners. Context: "${meta[2]}". Learner level: ${S.level}, interests: ${S.interests.join(', ')||'general'}. Already knows (skip these): ${have.join(', ')||'nothing from this pack yet'}.
 Pick the 10 HIGHEST-LEVERAGE Italian words/phrases for this context — maximum real-world usage per effort at their level, not obscure. Respond ONLY with JSON:
-{"words":[{"it":"word/phrase","en":"meaning","sit":"the exact situation you'd use it, max 10 words","mn":"vivid English memory hook, max 16 words","ex":"short natural example sentence"} x10]}`}],'Vocabulary architect. JSON only.',true,3000,'packs');
+{"words":[{"it":"word/phrase","en":"meaning","sit":"the exact situation you'd use it, max 10 words","mn":"vivid English memory hook, max 16 words","ex":"short natural example sentence"} x10]}`}],'Vocabulary architect. JSON only.'+langRules(),true,3000,'packs');
   if(!res||!res.words){ sheetBody('<div class="card">⚠ Couldn\'t build — reopen and retry.</div>'); return; }
   sheetBody(`
     <div class="eyebrow b">${meta[1]} ${esc(meta[2]).toUpperCase()} · PREVIEW</div>
@@ -3356,7 +3408,7 @@ async function renderPlateau(){
   const res=await ai([{role:'user',content:`You are a language coach for learners who've stopped improving. Learner's REAL usage data: ${JSON.stringify(snap)}.
 1) Diagnose the primary reason they'd plateau: input quality, output avoidance, or comfort looping — grounded in THEIR numbers (e.g. lots of flashcards but few spoken turns = output avoidance).
 2) Build a 30-day discomfort protocol: one concrete daily action each day that forces real progress. Escalate difficulty weekly. Actions must be doable inside or alongside this app (booth scenarios incl. medical rounds & bureaucracy calls, exam simulations, writing, dictation, watching Italian TV like DOC or Mare Fuori, shadowing, voice messages, ordering in Italian in real life). Keep each under 15 words.
-Respond ONLY with JSON: {"diagnosis":"3-4 sentences, direct, grounded in their data","days":["day 1 action", ... x30]}`}],'Direct, honest coach. Discomfort is the method. JSON only.',true,3000,'plateau');
+Respond ONLY with JSON: {"diagnosis":"3-4 sentences, direct, grounded in their data","days":["day 1 action", ... x30]}`}],'Direct, honest coach. Discomfort is the method. JSON only.'+langRules(),true,3000,'plateau');
   if(!res||!res.days){ sheetBody('<div class="card">⚠ Couldn\'t diagnose — reopen and retry.</div>'); return; }
   S.protocol={start:today(), diagnosis:res.diagnosis, days:res.days.slice(0,30), done:{}};
   save(); renderPlateau();
@@ -3466,7 +3518,7 @@ async function esameScritta(lv){
     $('#wGo').innerHTML='<span class="spinner"></span>'; $('#wGo').disabled=true;
     const res=await ai([{role:'user',content:`CILS/CELI ${lv} writing exam. Task: "${task}". Candidate's text: """${txt}"""
 Grade strictly at ${lv} standard. Respond ONLY with JSON:
-{"lessico":0-5,"grammatica":0-5,"coerenza":0-5,"adeguatezza":0-5,"pass":true|false (pass = total>=12 AND genuinely ${lv}-adequate),"cefr":"your honest CEFR verdict for this text","feedback":"3 short bullets with •: best thing, worst recurring problem, one register/structure upgrade","errs":[{"t":"one of: ${ERR_TAX_KEYS}","w":"their wrong phrase","r":"corrected phrase"} for up to 4 real errors found]}`}],'Rigorous but fair certified Italian exam grader. JSON only.',true,2000,'esame_scritta');
+{"lessico":0-5,"grammatica":0-5,"coerenza":0-5,"adeguatezza":0-5,"pass":true|false (pass = total>=12 AND genuinely ${lv}-adequate),"cefr":"your honest CEFR verdict for this text","feedback":"3 short bullets with •: best thing, worst recurring problem, one register/structure upgrade","errs":[{"t":"one of: ${ERR_TAX_KEYS}","w":"their wrong phrase","r":"corrected phrase"} for up to 4 real errors found]}`}],'Rigorous but fair certified Italian exam grader. JSON only.'+langRules(),true,2000,'esame_scritta');
     if(!res){ $('#wFb').innerHTML='<div class="card">⚠ Grading failed — riprova.</div>'; $('#wGo').disabled=false; $('#wGo').textContent='Consegna →'; return; }
     logErrs(res.errs,'esame');
     const R=rubricBox(res); saveExam(lv,'scritta',R.tot,!!res.pass);
@@ -3479,7 +3531,7 @@ Grade strictly at ${lv} standard. Respond ONLY with JSON:
 async function esameOrale(lv){
   const ob=(typeof ORALE_BANK!=='undefined')&&ORALE_BANK[lv];
   if(!ob) main.innerHTML='<div class="fadein" style="text-align:center;padding-top:60px"><span class="spinner"></span><p class="muted" style="margin-top:10px">La commissione sta preparando le domande…</p></div>';
-  const qs= ob ? {questions:[pickUnseen(ob.personale,'orP'+lv,1)[0], pickUnseen(ob.opinione,'orO'+lv,1)[0], pickUnseen(ob.ipotesi,'orI'+lv,1)[0], pickUnseen(ob.tema[S.interests.find(i=>ob.tema[i])]||ob.tema.default,'orT'+lv,1)[0]]} : await ai([{role:'user',content:`Generate 4 CILS/CELI ${lv} oral exam questions in Italian: 1 personal, 1 opinion/argumentation, 1 hypothetical (forces conditional/subjunctive), 1 themed on: ${S.interests.join(', ')||'daily life in Italy'}. Respond ONLY with JSON {"questions":["...","...","...","..."]}`}],'JSON only.',true,1000,'esame_orale');
+  const qs= ob ? {questions:[pickUnseen(ob.personale,'orP'+lv,1)[0], pickUnseen(ob.opinione,'orO'+lv,1)[0], pickUnseen(ob.ipotesi,'orI'+lv,1)[0], pickUnseen(ob.tema[S.interests.find(i=>ob.tema[i])]||ob.tema.default,'orT'+lv,1)[0]]} : await ai([{role:'user',content:`Generate 4 CILS/CELI ${lv} oral exam questions in Italian: 1 personal, 1 opinion/argumentation, 1 hypothetical (forces conditional/subjunctive), 1 themed on: ${S.interests.join(', ')||'daily life in Italy'}. Respond ONLY with JSON {"questions":["...","...","...","..."]}`}],'JSON only.'+langRules(),true,1000,'esame_orale');
   if(!qs||!qs.questions){ main.innerHTML='<div class="card">⚠ Connessione — riapri la prova.</div><button class="btn sm" onclick="renderEsame()">←</button>'; return; }
   let qi=0; const answers=[];
   function ask(){
@@ -3505,7 +3557,7 @@ async function esameOrale(lv){
   async function grade(){
     main.innerHTML='<div class="fadein" style="text-align:center;padding-top:60px"><span class="spinner"></span><p class="muted" style="margin-top:10px">La commissione delibera…</p></div>';
     const res=await ai([{role:'user',content:`CILS/CELI ${lv} oral exam. Q&A: ${JSON.stringify(answers)}. Grade at strict ${lv} standard. Respond ONLY with JSON:
-{"lessico":0-5,"grammatica":0-5,"coerenza":0-5,"adeguatezza":0-5,"pass":true|false,"cefr":"honest CEFR verdict","feedback":"3 short bullets with •","errs":[{"t":"one of: ${ERR_TAX_KEYS}","w":"wrong phrase","r":"fix"} up to 4]}`}],'Rigorous but fair Italian oral examiner. Reward communication, penalize systematic grammar gaps. JSON only.',true,2000,'esame_orale');
+{"lessico":0-5,"grammatica":0-5,"coerenza":0-5,"adeguatezza":0-5,"pass":true|false,"cefr":"honest CEFR verdict","feedback":"3 short bullets with •","errs":[{"t":"one of: ${ERR_TAX_KEYS}","w":"wrong phrase","r":"fix"} up to 4]}`}],'Rigorous but fair Italian oral examiner. Reward communication, penalize systematic grammar gaps. JSON only.'+langRules(),true,2000,'esame_orale');
     if(!res){ main.innerHTML='<div class="card">⚠ Valutazione fallita.</div>'; return; }
     logErrs(res.errs,'esame');
     const R=rubricBox(res); saveExam(lv,'orale',R.tot,!!res.pass);
@@ -3517,7 +3569,7 @@ async function esameOrale(lv){
 
 async function esameAscolto(lv){
   main.innerHTML='<div class="fadein" style="text-align:center;padding-top:60px"><span class="spinner"></span><p class="muted" style="margin-top:10px">Preparo il brano audio…</p></div>';
-  const set=await ai([{role:'user',content:`Create a CILS-style ${lv} listening comprehension: a natural spoken-Italian passage (60-90 words — announcement, voicemail, radio clip or dialogue snippet, realistic register) and 3 multiple-choice questions. Respond ONLY with JSON {"passage":"...","qs":[{"q":"...","o":["a","b","c","d"],"a":0}]}`}],'Italian exam author. JSON only.',true,2000,'esame_ascolto');
+  const set=await ai([{role:'user',content:`Create a CILS-style ${lv} listening comprehension: a natural spoken-Italian passage (60-90 words — announcement, voicemail, radio clip or dialogue snippet, realistic register) and 3 multiple-choice questions. Respond ONLY with JSON {"passage":"...","qs":[{"q":"...","o":["a","b","c","d"],"a":0}]}`}],'Italian exam author. JSON only.'+langRules(),true,2000,'esame_ascolto');
   if(!set||!set.passage){ main.innerHTML='<div class="card">⚠ Connessione — riapri.</div>'; return; }
   let revealed=false, score=0, answered=0;
   main.innerHTML=`
@@ -3554,7 +3606,7 @@ async function esameAscolto(lv){
 
 async function esameLettura(lv){
   main.innerHTML='<div class="fadein" style="text-align:center;padding-top:60px"><span class="spinner"></span><p class="muted" style="margin-top:10px">Preparo il testo…</p></div>';
-  const set=await ai([{role:'user',content:`Create a CILS-style ${lv} reading comprehension: an authentic-feeling Italian text (120-160 words — news brief, public notice, opinion excerpt or formal letter, appropriate register for ${lv}) and 4 multiple-choice questions testing global + detail + inference comprehension. Respond ONLY with JSON {"passage":"...","qs":[{"q":"...","o":["a","b","c","d"],"a":0}]}`}],'Italian exam author. JSON only.',true,2500,'esame_lettura');
+  const set=await ai([{role:'user',content:`Create a CILS-style ${lv} reading comprehension: an authentic-feeling Italian text (120-160 words — news brief, public notice, opinion excerpt or formal letter, appropriate register for ${lv}) and 4 multiple-choice questions testing global + detail + inference comprehension. Respond ONLY with JSON {"passage":"...","qs":[{"q":"...","o":["a","b","c","d"],"a":0}]}`}],'Italian exam author. JSON only.'+langRules(),true,2500,'esame_lettura');
   if(!set||!set.passage){ main.innerHTML='<div class="card">⚠ Connessione — riapri.</div>'; return; }
   let score=0, answered=0;
   main.innerHTML=`

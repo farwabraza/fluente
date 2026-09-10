@@ -895,6 +895,62 @@ setTimeout(async () => {
     w.fetch = orig; w.eval("setTab('oggi')");
   });
 
+
+  /* ---------- v7: modalità bambino (scaffold-fade) ---------- */
+  await T("langRules(): silent at 0–1, simple-Italian override at 2, no-English + recast at 3; injected into every AI prompt except placement and the booth turns", () => {
+    w.eval("S.scaffold=0"); if (w.eval("langRules()") !== "") throw new Error("level 0 not silent");
+    w.eval("S.scaffold=1"); if (w.eval("langRules()") !== "") throw new Error("level 1 not silent");
+    w.eval("S.scaffold=2"); const r2 = w.eval("langRules()"); if (!/SIMPLE ITALIAN/.test(r2) || /RECASTING/.test(r2)) throw new Error("level 2: " + r2.slice(0, 60));
+    w.eval("S.scaffold=3"); const r3 = w.eval("langRules()"); if (!/no English anywhere/.test(r3) || !/RECASTING/.test(r3)) throw new Error("level 3");
+    const injected = (html.match(/\+langRules\(\)/g) || []).length; if (injected < 22) throw new Error("injected into only " + injected + " calls");
+    if (/,'placement'\)/.test(html) && /langRules\(\),true,1000,'placement'/.test(html)) throw new Error("placement should not get langRules");
+    const conv = w.eval("convoSystem(SCENARIOS[0])"); if (!/MODALITÀ BAMBINO/.test(conv) || !/RECAST/.test(conv) || !/"translation" to an empty string/.test(conv)) throw new Error("convoSystem lacks the bambino clause at 3");
+    w.eval("S.scaffold=0"); if (/MODALITÀ BAMBINO/.test(w.eval("convoSystem(SCENARIOS[0])"))) throw new Error("convoSystem carries the clause at 0");
+  });
+
+  await T("the dial: Oggi row → sheet → picking a level sets S.scaffold and the row reflects it", () => {
+    w.eval("S.scaffold=0; setTab('oggi')");
+    if (!/Modalità bambino · Ponte/.test(w.document.querySelector("#bambRow").textContent)) throw new Error("row at 0");
+    w.document.querySelector("#bambRow").click();
+    if (!/QUANTO INGLESE/.test(w.eval("overlay.textContent"))) throw new Error("sheet");
+    w.document.querySelector('[data-sc="2"]').click();
+    if (S.scaffold !== 2) throw new Error("scaffold=" + S.scaffold);
+    if (!/Italiano \(2\/3\)/.test(w.document.querySelector("#bambRow").textContent)) throw new Error("row not updated: " + w.document.querySelector("#bambRow").textContent);
+  });
+
+  await T("lesson concept under the dial: 0 = English inline · 1 = behind a tap/details · 2 = no bridge, explanation collapsed · 3 = no English at all", async () => {
+    const open = async sc => { w.eval("S.scaffold=" + sc + "; openLesson(CURRICULUM.B1[0],'B1')"); await new Promise(r => setTimeout(r, 15)); return w.eval("overlay.innerHTML"); };
+    const h0 = await open(0); if (!/IL PONTE/.test(h0) || /details class="en"/.test(h0) || /tocca per l'inglese/.test(h0)) throw new Error("level 0");
+    const h1 = await open(1); if (!/IL PONTE/.test(h1) || !/details class="en"/.test(h1) || !/tocca per l'inglese/.test(h1)) throw new Error("level 1");
+    const h2 = await open(2); if (/IL PONTE/.test(h2) || !/solo se serve/.test(h2) || /tocca per l'inglese/.test(h2)) throw new Error("level 2");
+    const h3 = await open(3); if (/IL PONTE/.test(h3) || /details class="en"/.test(h3) || /MNEMONIC HOOK/.test(h3)) throw new Error("level 3 still shows English");
+    if (!/IL CONCETTO/.test(h3) || !/Drill it/.test(h3)) throw new Error("level 3 lost the Italian examples/drills");
+    w.eval("closeSheet()");
+  });
+
+  await T("Ripasso under the dial: at 2 a card with an example becomes a cloze ('che parola manca'), no English on the back, production flips at ivl≥3", () => {
+    w.eval("S.scaffold=2; S.deck=[{id:'t1',it:'ricovero',en:'admission',mn:'m',ex:'Il ricovero è durato tre giorni.',due:0,ivl:0,ease:2.5,lapses:0}]; renderSRS();");
+    const b = w.document.body.innerHTML;
+    if (!/CHE PAROLA MANCA/.test(b) || !/___ è durato tre giorni/.test(b)) throw new Error("no cloze front");
+    if (/>admission</.test(b)) throw new Error("English on the back at level 2");
+    w.eval("S.deck[0].ivl=3; renderSRS();");
+    if (!/COMPLETA LA FRASE/.test(w.document.body.innerHTML)) throw new Error("production not flipped at ivl 3");
+    w.eval("S.scaffold=0; S.deck[0].ivl=0; renderSRS();");
+    if (!/WHAT DOES IT MEAN/.test(w.document.body.innerHTML)) throw new Error("level 0 SRS changed");
+    w.eval("S.deck=buildStarterDeck();");
+  });
+
+  await T("booth bubble, chicca and roast gloss follow the dial; dettato gains a shadowing step at every level", () => {
+    w.eval("S.scaffold=1; S.brutale=true;");
+    const rf = w.eval("roastFb(false)"); if (!/roast/.test(rf) || !/muted/.test(rf)) throw new Error("gloss should show at 1");
+    w.eval("S.scaffold=2;"); if (/muted/.test(w.eval("roastFb(false)"))) throw new Error("gloss shown at 2");
+    w.eval("S.brutale=false; openChicca(0)"); if (/= /.test(w.document.querySelector(".sheet .card p") ? w.document.querySelector(".sheet .card p").textContent : "")) throw new Error("chicca English at 2");
+    w.eval("closeSheet(); S.scaffold=1;"); const er = w.eval("enReveal('hello','tr')"); if (!/tocca per l'inglese/.test(er) || !/data-en="hello"/.test(er)) throw new Error("enReveal at 1: " + er);
+    w.eval("S.scaffold=0; renderDettato();"); w.document.querySelector("#dTa").value = "x"; w.document.querySelector("#dCheck").click();
+    if (!w.document.querySelector("#dRep")) throw new Error("no shadowing button");
+    w.eval("setTab('oggi')");
+  });
+
   console.log(results.join("\n"));
   const fails = results.filter(r=>r[0]==="✗").length;
   console.log(fails ? "\n"+fails+" FAILURES" : "\nALL PASS");

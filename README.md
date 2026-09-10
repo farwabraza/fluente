@@ -8,6 +8,35 @@ with mnemonics, leech rescue, and production-direction recall.
 
 ---
 
+## What's new in v7.0 — la rotta, the bot that reaches out, instant lessons, modalità bambino
+
+Built for the learner who "never checks the app": v7 is about the app **coming to you**, opening **instantly**, knowing **where you're going**, and taking the **English away** one notch at a time. Every piece is a toggle; nothing changes what you already had unless you turn it on. (`main` still holds v6.8; the commit before all of this is tagged `v6.8-pre-paywall`.)
+
+### 🧭 La rotta — six questions that reshape the app
+Reached from the placement result, or any time from the **Rotta** row on Oggi. One question per screen: **where you must arrive** (the medical ladder — **B1** for clerkships from year 2 · **B2** for year-3 admission *and* Ordine dei Medici registration · **C1** CILS/CELI for the specialization concorso · madrelingua · B1 citizenship) → exam type + date → how you study (bursts vs blocks, which skills) → what always trips you (chips from the gap taxonomy) → minutes per day → **the pact** (time, anchor like "dopo il caffè", days, how to be reminded). What it changes: the Linea marks **🏁 la tua meta** and "oltre la meta"; Esame defaults to your target; Oggi shows a countdown and sizes the day's required missions to your minutes (a "perfect day" must be reachable on a bad day — 5 minutes = the micro-session only); declared struggles are **pre-seeded into the gap map** so Ripara and La Regola di Oggi start from you on day one; the coach gets your goal, deadline and minutes, and on ≤5-minute days prescribes **without AI** (`coachFallback()`, also used when the coach is unreachable).
+
+### ⏱ La sessione minima — 2 minutes, zero AI, zero waiting
+One due card, two Scelta items (misses tagged in the gap map), one dettato sentence shadowed. +10 XP, counts for the streak. Always the first row on Oggi, and what every reminder deep-links to (`?go=micro`).
+
+### 🔔 The Telegram bot that reaches out (needs 10 minutes of setup)
+The app never initiated contact; now an hourly cron makes a bot write to you **at the pact hour if you haven't done anything yet**, again **at 21:00 if still nothing**, and on **Mondays with the week's pagella** (XP, active days, streak, gap n.1, days to the exam). Every message opens the micro-session. Tone follows your own Modalità Brutale switch — gentile 😇 or brutale 🔥 (the bot roasts the skip, never you: *«Alle 08:15 dovevi aprire Fluente, non Instagram. Sessione minima, ORA.»*). Reply `fatto` when you studied outside the app, `/oggi` for status, `/stop` to silence it. Linking is 3 taps from **Oggi → Promemoria**.
+
+Setup: create a bot with [@BotFather](https://t.me/BotFather) (`/newbot` → copy the token and the username), then set on the server: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_NAME` (without @), `CRON_KEY` (any long random string), `APP_URL` (your public URL), optionally `TELEGRAM_WEBHOOK_SECRET`. Open once `https://<your-app>/api/telegram/setup?key=<CRON_KEY>` to register the webhook. Then point a free scheduler (cron-job.org, GitHub Actions `schedule`, UptimeRobot with a URL) at `https://<your-app>/api/cron/nudge?key=<CRON_KEY>` **every hour** — this ping also keeps a free-tier server awake. Add `&dry=1` to preview who would get what without sending. Requires `DATABASE_URL` (accounts) — the bot needs to know who you are.
+
+### ⚡ Instant lessons — 29 hand-written stations (`public/banks.js`)
+Every non-exam station on the Linea now opens **instantly, offline, with no Claude call**: hand-authored concept, English bridges, mnemonic, nota, speak task, cards, and a **10-drill pool per unit** — each drill tagged with a gap-map key, so lesson misses finally feed Ripara like every other drill. Five drills are picked per visit with a seeded rotation (two consecutive visits cover all ten; then a fresh order). On a repeat visit, **🔄 Nuove domande** asks the AI for five brand-new ones (~900 tokens instead of the old 3,200-token lesson) and keeps them in the rotation. Checkpoints and the **prova orale** draw their questions from `CHECKPOINT_QS` / `ORALE_BANK` (no repeats until a bucket is used up); grading stays AI. Any unit you add to the curriculum without a bank entry still gets the AI lesson — now cached, so REVIEW never regenerates.
+
+### 🧒 Modalità bambino — the scaffold-fade
+Children don't translate: they get comprehensible input, chunks and recasts. The English bridges are the right scaffold at the start; the **Modalità bambino** row on Oggi takes them away a notch at a time — **0 Ponte** (as before) · **1 Sussurro** (English behind a tap: booth translations, lesson bridges, card backs, chicca) · **2 Italiano** (no translations; cloze cards from the example sentence, production direction at 3 days instead of 7, the AI explains in simple Italian and the booth corrects by *recasting*) · **3 Madrelingua** (no English anywhere). Every AI prompt carries the override (`langRules()`, zero extra tokens); the rulebook stays in English on purpose (it's a manual). Dettato gained a **🎙 shadowing** step at every level. Passing a checkpoint suggests the next notch.
+
+### Also
+- `today()` is now the **local** calendar day (it was UTC — in Italy anything between 00:00 and 02:00 counted as yesterday, which quietly corrupted streaks and would have fought the reminders).
+- Streak **freezes** ❄️: one skipped day is covered if you have one (earned every 7 days, max 2); two skipped days reset; best streak tracked; Oggi says *"Ieri hai saltato. Una sola. Oggi conta doppio."*
+- Cards from a lesson are no longer duplicated when you REVIEW a station.
+- `node smoke.js` → 83 jsdom checks · `node smoke-server.js` → 15 server checks (boots the real server dormant and enforced, no DB needed).
+
+---
+
 ## What's new in v6.9 — ✦ Pro paywall (dormant)
 
 The paid tier exists in the code but **does nothing until you switch it on**. With no new environment variables set, v6.9 behaves exactly like v6.8 for every user: no Pro rows, no locks, no refused calls. The one visible-only-to-you change is a per-feature cost line in the server log (`[ai] esame_scritta farwa in=812 out=390`), which is the data you need to price Pro.
@@ -168,6 +197,7 @@ Render's free tier still includes web services — you're only charged if the se
 - `TRANSCRIBE_API_KEY` — free at console.groq.com → enables the iPhone mic
 - Optional: `CLAUDE_MODEL`, `DAILY_AI_LIMIT`, `RATE_LIMIT_PER_MIN`, `TRANSCRIBE_BASE_URL`, `TRANSCRIBE_MODEL`
 - Pro paywall (leave unset to stay fully free — see "What's new in v6.9"): `PRO_ENFORCE`, `CHECKOUT_URL`, `MOR_WEBHOOK_SECRET`
+- Telegram reminders (see "What's new in v7.0"): `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_NAME`, `CRON_KEY`, `APP_URL`, optional `TELEGRAM_WEBHOOK_SECRET` — plus an hourly ping to `/api/cron/nudge?key=…`
 
 💡 *Keeping Render awake:* a free uptime monitor (e.g. UptimeRobot) pinging your URL every 14 minutes prevents spin-down and fits inside the 750 free hours — a common pattern, though it burns your full monthly allowance on one service.
 
@@ -216,13 +246,19 @@ Postgres you control) and a terms line; if selling to EU consumers, note GDPR ba
 
 | Piece | File |
 |---|---|
-| App (all of it) | `public/index.html` |
-| AI proxy + rate limits + accounts + dormant Pro wall + payment webhook | `server.js` |
+| App | `public/index.html` |
+| Hand-written lesson, checkpoint and exam-orale banks | `public/banks.js` |
+| AI proxy + rate limits + accounts + Telegram nudges/cron + dormant Pro wall + payment webhook | `server.js` |
 | PWA install/offline | `public/manifest.json`, `public/sw.js` |
-| Headless test suite (63 checks, dev-only) | `smoke.js` — `npm i jsdom --no-save && node smoke.js` |
-| Server smoke test (13 checks, boots server.js dormant + enforced) | `smoke-server.js` — `node smoke-server.js` |
+| Headless test suite (83 checks, dev-only) | `smoke.js` — `npm i jsdom --no-save && node smoke.js` |
+| Server smoke test (15 checks, boots server.js dormant + enforced) | `smoke-server.js` — `node smoke-server.js` |
 
-## 6 · Tinkering map (everything is in index.html)
+## 6 · Tinkering map (app in index.html, content banks in banks.js)
+
+- `LESSON_BANK` (banks.js) — the 29 hand-written stations: concept/bullets/examples/bridge · mnemonic · note · 10 drills `{q, options[4], answer, why, err}` (err = a gap-map key) · speak · newcards. Add a unit to `CURRICULUM` without a bank entry and it falls back to the AI lesson.
+- `CHECKPOINT_QS` / `ORALE_BANK` (banks.js) — checkpoint and prova-orale questions per level; `int:` themes a checkpoint question on an interest chip
+- `NUDGE` (server.js) — the gentile/brutale Telegram message bank; `{name} {slot} {anchor} {streak} {due} {gap} {link}` are filled in
+- `ROTTA_GOALS`, `BAMBINO`, `requiredMissions()` — the ladder, the dial, and how many missions a day needs
 
 - `GRAMMAR_BOOK` — the 26-rule grammar rulebook (hand-written; edit freely — each rule: `note` one-liner, `bridge` English parallels, when/how/why/trap/examples)
 - `CHICCA_BANK` — the 46 daily colloquial phrases & facts (hand-written; add your own)
