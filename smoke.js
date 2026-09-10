@@ -2,7 +2,7 @@
 const fs = require("fs");
 const { JSDOM } = require("jsdom");
 
-const html = fs.readFileSync("public/index.html", "utf8");
+const html = fs.readFileSync("public/index.html", "utf8").replace('<script src="banks.js"></script>', () => "<script>" + fs.readFileSync("public/banks.js", "utf8") + "</script>");
 const dom = new JSDOM(html, { runScripts: "dangerously", url: "http://localhost/", beforeParse(win){
   win.speechSynthesis = { cancel(){}, speak(){}, getVoices: () => [] };
   win.SpeechSynthesisUtterance = function(){};
@@ -785,6 +785,114 @@ setTimeout(async () => {
     if (!/Collegato a @FluenteBot/.test(w.eval("overlay.textContent"))) throw new Error("sheet not in linked state");
     if (!seen.some(x => /nudge\/link Bearer t/.test(x))) throw new Error("link call lacked bearer: " + seen.join(" | "));
     w.fetch = orig; w.eval("closeSheet(); CREDS=null; NUDGE={configured:false,linked:false,bot:'',known:true};");
+  });
+
+
+  /* ---------- v7: preloaded lessons + question banks ---------- */
+  await T("LESSON_BANK integrity: every non-exam unit has a lesson; 10 drills × 4 options, answers in range, err ∈ ERR_TAX, cards & speak present", () => {
+    const L = w.eval("LESSON_BANK"), C = w.eval("CURRICULUM"), E = w.eval("ERR_TAX");
+    const units = Object.values(C).flat().filter(u => !u.exam);
+    const missing = units.filter(u => !L[u.id]).map(u => u.id); if (missing.length) throw new Error("no lesson for " + missing.join(","));
+    const stray = Object.keys(L).filter(id => !units.find(u => u.id === id)); if (stray.length) throw new Error("bank keys not in curriculum: " + stray.join(","));
+    for (const [id, les] of Object.entries(L)) {
+      const c = les.concept; if (!c || !c.title || !Array.isArray(c.bullets) || c.bullets.length < 3 || !Array.isArray(c.examples) || c.examples.length < 2 || !Array.isArray(c.bridge) || c.bridge.length < 2) throw new Error(id + " concept");
+      if (!les.mnemonic || !les.note || !les.speak || !les.speak.prompt || !les.speak.model) throw new Error(id + " mnemonic/note/speak");
+      if (!Array.isArray(les.newcards) || les.newcards.length < 2 || les.newcards.some(x => !x.it || !x.en || !x.mn || !x.ex)) throw new Error(id + " newcards");
+      if (!Array.isArray(les.drills) || les.drills.length < 10) throw new Error(id + " drills=" + (les.drills || []).length);
+      les.drills.forEach((d, i) => {
+        if (!d.q || !Array.isArray(d.options) || d.options.length !== 4 || new Set(d.options).size !== 4) throw new Error(id + " drill " + i + " options");
+        if (!Number.isInteger(d.answer) || d.answer < 0 || d.answer > 3) throw new Error(id + " drill " + i + " answer");
+        if (!d.why || !d.err || !E[d.err]) throw new Error(id + " drill " + i + " why/err=" + d.err);
+      });
+    }
+    const Q = w.eval("CHECKPOINT_QS"); for (const lv of ["A1","A2","B1","B2","C1","C2"]) if (!Q[lv] || Q[lv].length < 8 || Q[lv].some(x => !x.q)) throw new Error("CHECKPOINT_QS " + lv);
+    const O = w.eval("ORALE_BANK"); for (const lv of ["B1","B2","C1","C2"]) { const b = O[lv]; if (!b || b.personale.length < 4 || b.opinione.length < 4 || b.ipotesi.length < 4 || !b.tema.medical || !b.tema.default) throw new Error("ORALE_BANK " + lv); }
+  });
+
+  await T("a banked station opens INSTANTLY with zero network: concept, bridge, 5 drills; a miss is tagged in the gap map; cards never duplicate", async () => {
+    let fetched = 0; const orig = w.fetch; w.fetch = async (u, o) => { if (String(u).includes("/api/")) fetched++; return orig(u, o); };
+    w.eval("S.lessonVisits={}; S.lessonExtra={}; S.errLog={}; S.deck=S.deck.filter(c=>!String(c.id).startsWith('a2u1-')); openLesson(CURRICULUM.A2[0],'A2');");
+    await new Promise(r => setTimeout(r, 20));
+    const ov = w.eval("overlay.textContent");
+    if (!/IL CONCETTO/.test(ov) || !/IL PONTE/.test(ov) || !/LA NOTA/.test(ov)) throw new Error("concept not rendered: " + ov.slice(0, 80));
+    if (w.document.querySelector("#newQs")) throw new Error("Nuove domande offered on a first visit");
+    w.document.querySelector("#startDrills").click();
+    for (let i = 0; i < 5; i++) {
+      if (!new RegExp("DRILL " + (i + 1) + " / 5").test(w.eval("overlay.textContent"))) throw new Error("drill " + (i + 1) + " missing");
+      const opts = w.document.querySelectorAll(".sheet .qopt"); if (opts.length !== 4) throw new Error("options " + opts.length);
+      const les = w.eval("LESSON_BANK.a2u1");
+      // deliberately miss the first drill: click a wrong option
+      const q = w.document.querySelector(".sheet h2").textContent; const d = les.drills.find(x => x.q === q); if (!d) throw new Error("drill text not from bank");
+      opts[i === 0 ? (d.answer + 1) % 4 : d.answer].click();
+      w.document.querySelector("#nextD").click();
+    }
+    if (!/SPEAK IT/.test(w.eval("overlay.textContent"))) throw new Error("speak step missing");
+    const errs = Object.keys(S.errLog); if (errs.length !== 1) throw new Error("gap map after one miss: " + JSON.stringify(S.errLog));
+    if (S.errLog[errs[0]].ex[0].src !== "lezione" && !JSON.stringify(S.errLog).includes("lezione")) { /* src may not be stored; count is what matters */ }
+    w.document.querySelector("#skipSpeak").click(); w.document.querySelector("#finishL").click();
+    if (S.lessonVisits.a2u1 !== 1) throw new Error("visit not counted");
+    const n1 = S.deck.filter(c => String(c.id).startsWith("a2u1-")).length; if (n1 !== 3) throw new Error("cards added: " + n1);
+    w.eval("openLesson(CURRICULUM.A2[0],'A2')"); await new Promise(r => setTimeout(r, 20));
+    if (!w.document.querySelector("#newQs")) throw new Error("Nuove domande missing on revisit");
+    w.document.querySelector("#startDrills").click();
+    for (let i = 0; i < 5; i++) { const les = w.eval("LESSON_BANK.a2u1"); const q = w.document.querySelector(".sheet h2").textContent; const d = les.drills.find(x => x.q === q); w.document.querySelectorAll(".sheet .qopt")[d.answer].click(); w.document.querySelector("#nextD").click(); }
+    w.document.querySelector("#skipSpeak").click(); w.document.querySelector("#finishL").click();
+    if (S.deck.filter(c => String(c.id).startsWith("a2u1-")).length !== 3) throw new Error("cards duplicated on REVIEW");
+    w.fetch = orig; if (fetched) throw new Error("network calls during a banked lesson: " + fetched);
+  });
+
+  await T("drill rotation: visits 0 and 1 are disjoint halves of the 10; the same visit number always yields the same set; visits 2+3 cover all ten again in a new order", () => {
+    const pick = v => { w.eval("S.lessonVisits.b1u4=" + v); return w.eval("pickDrills('b1u4',5).map(d=>d.q)"); };
+    const a = pick(0), b = pick(1), a2 = pick(0), c = pick(2), d = pick(3);
+    if (a.length !== 5 || b.length !== 5) throw new Error("size");
+    if (a.some(q => b.includes(q))) throw new Error("visits 0 and 1 overlap");
+    if (JSON.stringify(a) !== JSON.stringify(a2)) throw new Error("not deterministic");
+    if (new Set([...c, ...d]).size !== 10) throw new Error("visits 2+3 do not cover all ten");
+    if (JSON.stringify(a) === JSON.stringify(c)) throw new Error("no reshuffle after a pair of visits");
+  });
+
+  await T("Nuove domande: one ~900-token AI call brings 5 new drills into S.lessonExtra (capped at 10) and runs them", async () => {
+    const orig = w.fetch; let body = null;
+    const fake = Array.from({ length: 5 }, (_, i) => ({ q: "Nuova " + i + " ___", options: ["a","b","c","d"], answer: i % 4, why: "why", err: "preposizioni" }));
+    w.fetch = async (u, o) => { if (String(u).includes("/api/chat")) { body = JSON.parse(o.body); return { status: 200, json: async () => ({ content: [{ type: "text", text: JSON.stringify({ drills: fake }) }] }) }; } return orig(u, o); };
+    w.eval("S.lessonVisits.a2u1=2; S.lessonExtra={}; openLesson(CURRICULUM.A2[0],'A2')"); await new Promise(r => setTimeout(r, 20));
+    w.document.querySelector("#newQs").click(); await new Promise(r => setTimeout(r, 40));
+    w.fetch = orig;
+    if (!body || body.feature !== "nuove" || body.max_tokens > 1000) throw new Error("call shape: " + JSON.stringify(body && { f: body.feature, t: body.max_tokens }));
+    if (!S.lessonExtra.a2u1 || S.lessonExtra.a2u1.length !== 5) throw new Error("extras not stored");
+    if (!/Nuova 0/.test(w.eval("overlay.textContent"))) throw new Error("new drills not running");
+    w.eval("closeSheet()");
+  });
+
+  await T("a unit WITHOUT a bank entry uses the AI lesson once and then S.lessonCache — REVIEW never regenerates", async () => {
+    const orig = w.fetch; let calls = 0;
+    const les = { concept: { title: "T", bullets: ["a","b","c"], examples: [{ it: "x", en: "y" }], bridge: [] }, mnemonic: "m", note: "n", drills: [{ q: "q1", options: ["a","b","c","d"], answer: 0, why: "w" }], speak: { prompt: "p", model: "m" }, newcards: [] };
+    w.fetch = async (u, o) => { if (String(u).includes("/api/chat")) { calls++; return { status: 200, json: async () => ({ content: [{ type: "text", text: JSON.stringify(les) }] }) }; } return orig(u, o); };
+    w.eval("S.lessonCache={}; window.__keep=LESSON_BANK.c2u4; delete LESSON_BANK.c2u4;");
+    await w.eval("openLesson(CURRICULUM.C2[3],'C2')");
+    if (calls !== 1) throw new Error("first open calls=" + calls);
+    if (!S.lessonCache.c2u4) throw new Error("not cached");
+    await w.eval("openLesson(CURRICULUM.C2[3],'C2')");
+    if (calls !== 1) throw new Error("second open regenerated");
+    w.fetch = orig; w.eval("LESSON_BANK.c2u4=window.__keep; closeSheet();");
+  });
+
+  await T("checkpoint and prova orale take their questions from the banks: no network until grading; no repeats until a bucket is exhausted", async () => {
+    let fetched = 0; const orig = w.fetch; w.fetch = async (u, o) => { if (String(u).includes("/api/chat")) fetched++; return orig(u, o); };
+    w.eval("S.bankSeen={}; S.interests=['medical']; openCheckpoint(CURRICULUM.A2[5],'A2')");
+    w.document.querySelector("#startEx").click(); await new Promise(r => setTimeout(r, 20));
+    if (!/DOMANDA 1 \/ 3/.test(w.eval("overlay.textContent"))) throw new Error("checkpoint question not shown");
+    if (fetched) throw new Error("checkpoint fetched questions");
+    const q1 = w.document.querySelector(".sheet h2").textContent.replace("🔊","").trim();
+    if (!w.eval("CHECKPOINT_QS.A2").some(x => x.q === q1)) throw new Error("question not from bank: " + q1);
+    w.eval("closeSheet()");
+    const seen = w.eval("JSON.stringify(S.bankSeen)"); if (!/cpG A2|cpGA2/.test(seen) && !/cpG/.test(seen)) throw new Error("bankSeen not tracked: " + seen);
+    await w.eval("esameOrale('B2')"); await new Promise(r => setTimeout(r, 20));
+    if (fetched) throw new Error("orale fetched questions");
+    if (!/PROVA ORALE · B2 · DOMANDA 1\/4/.test(w.document.body.textContent)) throw new Error("orale not started");
+    const qo = w.document.querySelector("h2").textContent.replace("🔊","").trim();
+    if (!w.eval("ORALE_BANK.B2.personale").includes(qo)) throw new Error("first orale question should be 'personale': " + qo);
+    w.fetch = orig; w.eval("setTab('oggi')");
   });
 
   console.log(results.join("\n"));

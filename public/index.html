@@ -300,6 +300,7 @@ button:focus-visible,.chip:focus-visible,.qopt:focus-visible{outline:3px solid v
 </div>
 <div id="overlay"></div>
 
+<script src="banks.js"></script>
 <script>
 /* =========================================================
    FLUENTE — Italian to native level. ADHD-first architecture:
@@ -1417,7 +1418,7 @@ Respond ONLY with JSON:
 function renderLinea(){
   let html=`<div class="fadein"><div class="eyebrow r">LA LINEA F · ${S.level} → C2</div>
   <h1 style="margin-bottom:4px">Your route to native.</h1>
-  <p class="muted" style="margin-bottom:10px">Every station = one 5-minute lesson, AI-built fresh each time. Checkpoints are mini oral exams — pass to unlock the next zone.</p>`;
+  <p class="muted" style="margin-bottom:10px">Every station = one 5-minute lesson — hand-built, opens instantly, and the drill questions rotate every visit (or ask the AI for brand-new ones). Checkpoints are mini oral exams — pass to unlock the next zone.</p>`;
   const goalIdx = S.goal&&S.goal.target ? LEVELS.indexOf(S.goal.target) : -1;
   LEVELS.forEach((lv,li)=>{
     const units=CURRICULUM[lv];
@@ -1446,10 +1447,33 @@ function renderLinea(){
   });
 }
 
-/* ----- Micro-lesson: concept → mnemonic → 5 drills → speak ----- */
-async function openLesson(unit, lv){
-  showSheet(`<div class="eyebrow r">${lv} · ${esc(unit.t)}</div>`,`<div style="text-align:center;padding:40px 0"><span class="spinner"></span><p class="muted" style="margin-top:10px">Building your lesson…</p></div>`);
-  const lesson = await ai([{role:'user',content:`Create a 5-minute Italian micro-lesson. Level: ${lv}. Topic: "${unit.t}" (${unit.d}). Learner interests: ${S.interests.join(', ')||'everyday life in Italy'}. They love mnemonics and need tiny, punchy sessions.
+/* ----- Micro-lesson: concept → mnemonic → 5 drills → speak -----
+   Lessons come from LESSON_BANK (banks.js): hand-written, instant, offline. Each unit carries a 10-drill
+   pool tagged with an ERR_TAX key, so misses feed the gap map like every other drill in the app.
+   Five drills are picked per visit with a seeded shuffle (visit n and n+1 see different halves); "Nuove
+   domande" asks the AI for 5 more (~600 tokens) and keeps them in S.lessonExtra. Units without a bank
+   entry fall back to the old 3,200-token AI lesson, cached in S.lessonCache so REVIEW never regenerates. */
+function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+function seedOf(s){ let h=2166136261; for(const ch of String(s)){ h^=ch.charCodeAt(0); h=Math.imul(h,16777619); } return h>>>0; }
+function pickDrills(unitId, n){
+  const bank=(typeof LESSON_BANK!=='undefined'&&LESSON_BANK[unitId])?LESSON_BANK[unitId].drills:[];
+  const pool=[...bank, ...((S.lessonExtra||{})[unitId]||[])];
+  if(pool.length<=(n||5)) return pool;
+  const v=(S.lessonVisits||{})[unitId]||0, rnd=mulberry32(seedOf(unitId)+Math.floor(v/2)*7919);
+  const idx=pool.map((_,i)=>i); for(let i=idx.length-1;i>0;i--){ const j=Math.floor(rnd()*(i+1)); [idx[i],idx[j]]=[idx[j],idx[i]]; }
+  const start=((v%2)*(n||5))%idx.length; const out=[];
+  for(let k=0;k<(n||5);k++) out.push(pool[idx[(start+k)%idx.length]]);
+  return out;
+}
+function pickUnseen(arr, key, n){
+  const seen=S.bankSeen[key]||(S.bankSeen[key]=[]);
+  let free=arr.map((_,i)=>i).filter(i=>!seen.includes(i));
+  if(free.length<(n||1)){ S.bankSeen[key]=[]; free=arr.map((_,i)=>i); }
+  const out=[]; while(out.length<(n||1)&&free.length){ const i=free.splice(Math.floor(Math.random()*free.length),1)[0]; S.bankSeen[key].push(i); out.push(arr[i]); }
+  save(); return out;
+}
+async function aiLesson(unit, lv){
+  return ai([{role:'user',content:`Create a 5-minute Italian micro-lesson. Level: ${lv}. Topic: "${unit.t}" (${unit.d}). Learner interests: ${S.interests.join(', ')||'everyday life in Italy'}. They love mnemonics and need tiny, punchy sessions.
 IMPORTANT — how to explain: the learner is a native English speaker who speaks decent Italian but does NOT remember grammar terminology in either language. NEVER rely on labels like "past perfect" or "subjunctive" alone — every time a grammar idea appears, anchor it to the English construction shown in quotes (e.g. «avevo fatto» = the English "I had done" move; congiuntivo = the mood in "if I WERE you"). Teach the principle in plain words; assume zero jargon, full intelligence. ADHD format: one idea per bullet, short punchy lines.
 Respond ONLY with JSON:
 {"concept":{"title":"...","bullets":["3-4 punchy bullets explaining the core idea in plain English (no terminology — quoted English equivalents instead)","..."],"examples":[{"it":"Italian example","en":"translation"},{"it":"...","en":"..."}],"bridge":[{"en":"an English sentence that uses the SAME construction","it":"its Italian equivalent"},{"en":"...","it":"..."}]},
@@ -1458,6 +1482,18 @@ Respond ONLY with JSON:
 "drills":[{"q":"question (can include ___ gaps)","options":["4 options"],"answer":0,"why":"8-word explanation, plain English, no terminology"} x5 — calibrate difficulty to ${lv}],
 "speak":{"prompt":"a single sentence the learner must say aloud in Italian, using today's grammar","model":"the model Italian sentence"},
 "newcards":[{"it":"word/phrase from this lesson","en":"meaning","mn":"mnemonic","ex":"example sentence"} x2]}`}],'You are a brilliant Italian curriculum designer. JSON only, no markdown fences. Drills must genuinely test the concept. Explain grammar by English parallel, never by terminology.',true,3200,'lesson_ai');
+}
+async function openLesson(unit, lv){
+  const hd=`<div class="eyebrow r">${lv} · ${esc(unit.t)}</div>`;
+  const bank=(typeof LESSON_BANK!=='undefined')&&LESSON_BANK[unit.id];
+  let lesson;
+  if(bank){ showSheet(hd,''); lesson=Object.assign({}, bank, {drills:pickDrills(unit.id,5), fromBank:true}); }
+  else if(S.lessonCache[unit.id]){ showSheet(hd,''); lesson=S.lessonCache[unit.id]; }
+  else{
+    showSheet(hd,`<div style="text-align:center;padding:40px 0"><span class="spinner"></span><p class="muted" style="margin-top:10px">Building your lesson…</p></div>`);
+    lesson=await aiLesson(unit, lv);
+    if(lesson){ S.lessonCache[unit.id]=lesson; save(); }
+  }
   if(!lesson){ sheetBody(`<div class="card">⚠ Couldn't build the lesson — check connection and tap the station again.</div>`); return; }
   let di=0, correct=0;
   function drillView(){
@@ -1472,7 +1508,8 @@ Respond ONLY with JSON:
       const k=+b.dataset.k;
       document.querySelectorAll('.sheet .qopt').forEach(x=>x.disabled=true);
       if(k===D.answer){ b.classList.add('right'); correct++; }
-      else{ b.classList.add('wrong'); document.querySelectorAll('.sheet .qopt')[D.answer].classList.add('right'); }
+      else{ b.classList.add('wrong'); document.querySelectorAll('.sheet .qopt')[D.answer].classList.add('right');
+        if(D.err && ERR_TAX[D.err]) logErr(D.err, D.q.replace('___',D.options[k]), D.q.replace('___',D.options[D.answer]), 'lezione'); }
       $('#drillFb').innerHTML=`<div class="mnemo fadein" style="margin-top:10px">${roastFb(k===D.answer)}<b>${k===D.answer?'✓ Esatto!':'✗'} </b>${esc(D.why)}</div><button class="btn dark block" id="nextD">Next →</button>`;
       $('#nextD').onclick=()=>{di++;drillView();};
     });
@@ -1503,7 +1540,8 @@ Respond ONLY with JSON:
       $('#speakFb').after(btn);
       btn.onclick=()=>{
         S.unitsDone[unit.id]=true; S.missions.lesson=true; touchStreak(); gainXP(30);
-        (lesson.newcards||[]).forEach((c,i)=>S.deck.push({id:unit.id+'-'+i, it:c.it,en:c.en,mn:c.mn,ex:c.ex,due:Date.now(),ivl:0,ease:2.5}));
+        S.lessonVisits[unit.id]=(S.lessonVisits[unit.id]||0)+1;
+        (lesson.newcards||[]).forEach((c,i)=>{ if(!S.deck.find(x=>x.id===unit.id+'-'+i)) S.deck.push({id:unit.id+'-'+i, it:c.it,en:c.en,mn:c.mn,ex:c.ex,due:Date.now(),ivl:0,ease:2.5,lapses:0}); });
         save(); closeSheet(); toast('Station complete! New words added to Ripasso ⚡'); renderLinea();
       };
     }
@@ -1523,8 +1561,18 @@ Respond ONLY with JSON:
     </div>`).join('')}`:''}
     <div class="mnemo"><div class="eyebrow">🧠 MNEMONIC HOOK</div>${esc(lesson.mnemonic)}</div>
     ${lesson.note?`<div class="nota"><div class="eyebrow">📝 LA NOTA · the one-liner for your notebook</div><b style="font-size:.92rem">${esc(lesson.note)}</b></div>`:''}
-    <button class="btn primary block" id="startDrills">Drill it → (5 quick ones)</button>`);
+    <button class="btn primary block" id="startDrills">Drill it → (5 quick ones)</button>
+    ${lesson.fromBank&&(S.lessonVisits[unit.id]||0)>0?`<button class="btn sm block" id="newQs" style="margin-top:8px;background:var(--carta2)">🔄 Nuove domande — 5 fresh ones from the AI</button>`:''}`);
   $('#startDrills').onclick=drillView;
+  const nq=$('#newQs'); if(nq) nq.onclick=async()=>{
+    nq.innerHTML='<span class="spinner"></span> writing 5 new questions…'; nq.disabled=true;
+    const res=await ai([{role:'user',content:`Italian micro-lesson "${unit.t}" (${unit.d}), level ${lv}. Its one-line rule: ${lesson.note||''}. Two example drills (match this style and JSON shape exactly): ${JSON.stringify(lesson.drills.slice(0,2))}.
+Write 5 NEW drills on the same rule — different sentences, no repeats — each with 4 options, "answer" index, a plain-English "why" (max 10 words, no grammar terminology), and "err" chosen from: ${ERR_TAX_KEYS}. Respond ONLY with JSON: {"drills":[...]}`}],'Meticulous Italian drill author. JSON only.',true,900,'nuove');
+    if(!res||!Array.isArray(res.drills)||!res.drills.length){ nq.textContent='⚠ Nothing came back — try again'; nq.disabled=false; return; }
+    const ok=res.drills.filter(d=>d&&d.q&&Array.isArray(d.options)&&d.options.length===4&&Number.isInteger(d.answer)&&d.answer>=0&&d.answer<4);
+    const ex=S.lessonExtra[unit.id]||(S.lessonExtra[unit.id]=[]); ok.forEach(d=>ex.push(d)); if(ex.length>10) ex.splice(0,ex.length-10); save();
+    lesson.drills=ok.slice(0,5); toast(ok.length+' nuove domande ✨'); drillView();
+  };
 }
 function similar(a,b){
   const n=s=>s.toLowerCase().replace(/[^a-zàèéìòù ]/g,'').split(/\s+/).filter(Boolean);
@@ -1533,14 +1581,23 @@ function similar(a,b){
 }
 
 /* ----- Checkpoint oral exam ----- */
+/* 2 general questions + 1 themed on the learner's interests when the bank has one; no repeats until the bank is exhausted. */
+function pickCheckpointQs(bank, lv){
+  const themed=bank.filter(x=>x.int&&S.interests.includes(x.int)), general=bank.filter(x=>!x.int);
+  const out=[];
+  if(themed.length) out.push(...pickUnseen(themed,'cpT'+lv,1));
+  out.push(...pickUnseen(general,'cpG'+lv,3-out.length));
+  return out.map(x=>x.q).sort(()=>Math.random()-0.5);
+}
 async function openCheckpoint(unit,lv){
   showSheet(`<div class="eyebrow r">CHECKPOINT · ${lv} ORAL EXAM</div>`,`
     <div class="card"><h2>3 questions. Answer in Italian — speak or type.</h2>
     <p class="muted">An AI examiner grades structure, vocabulary, and whether you'd survive this level in the wild. Pass = next zone unlocks.</p></div>
     <button class="btn primary block" id="startEx">Begin esame →</button>`);
   $('#startEx').onclick=async()=>{
-    sheetBody(`<div style="text-align:center;padding:40px 0"><span class="spinner"></span><p class="muted" style="margin-top:8px">The examiner is preparing…</p></div>`);
-    const qs = await ai([{role:'user',content:`Generate 3 oral exam questions for CEFR ${lv} Italian (themes from this level: ${CURRICULUM[lv].map(u=>u.t).join(', ')}). Make 1 question themed on the learner's interests (${S.interests.join(', ')||'everyday life'}) if level is A2+. Respond ONLY with JSON: {"questions":["q1 in Italian","q2","q3"]}`}],'JSON only.',true,1000,'checkpoint');
+    const cpBank=(typeof CHECKPOINT_QS!=='undefined')&&CHECKPOINT_QS[lv];
+    if(!cpBank) sheetBody(`<div style="text-align:center;padding:40px 0"><span class="spinner"></span><p class="muted" style="margin-top:8px">The examiner is preparing…</p></div>`);
+    const qs = cpBank ? {questions:pickCheckpointQs(cpBank, lv)} : await ai([{role:'user',content:`Generate 3 oral exam questions for CEFR ${lv} Italian (themes from this level: ${CURRICULUM[lv].map(u=>u.t).join(', ')}). Make 1 question themed on the learner's interests (${S.interests.join(', ')||'everyday life'}) if level is A2+. Respond ONLY with JSON: {"questions":["q1 in Italian","q2","q3"]}`}],'JSON only.',true,1000,'checkpoint');
     if(!qs||!qs.questions){ sheetBody('<div class="card">⚠ Connection issue — reopen the checkpoint.</div>'); return; }
     let qi=0; const answers=[];
     function ask(){
@@ -3420,8 +3477,9 @@ Grade strictly at ${lv} standard. Respond ONLY with JSON:
 }
 
 async function esameOrale(lv){
-  main.innerHTML='<div class="fadein" style="text-align:center;padding-top:60px"><span class="spinner"></span><p class="muted" style="margin-top:10px">La commissione sta preparando le domande…</p></div>';
-  const qs=await ai([{role:'user',content:`Generate 4 CILS/CELI ${lv} oral exam questions in Italian: 1 personal, 1 opinion/argumentation, 1 hypothetical (forces conditional/subjunctive), 1 themed on: ${S.interests.join(', ')||'daily life in Italy'}. Respond ONLY with JSON {"questions":["...","...","...","..."]}`}],'JSON only.',true,1000,'esame_orale');
+  const ob=(typeof ORALE_BANK!=='undefined')&&ORALE_BANK[lv];
+  if(!ob) main.innerHTML='<div class="fadein" style="text-align:center;padding-top:60px"><span class="spinner"></span><p class="muted" style="margin-top:10px">La commissione sta preparando le domande…</p></div>';
+  const qs= ob ? {questions:[pickUnseen(ob.personale,'orP'+lv,1)[0], pickUnseen(ob.opinione,'orO'+lv,1)[0], pickUnseen(ob.ipotesi,'orI'+lv,1)[0], pickUnseen(ob.tema[S.interests.find(i=>ob.tema[i])]||ob.tema.default,'orT'+lv,1)[0]]} : await ai([{role:'user',content:`Generate 4 CILS/CELI ${lv} oral exam questions in Italian: 1 personal, 1 opinion/argumentation, 1 hypothetical (forces conditional/subjunctive), 1 themed on: ${S.interests.join(', ')||'daily life in Italy'}. Respond ONLY with JSON {"questions":["...","...","...","..."]}`}],'JSON only.',true,1000,'esame_orale');
   if(!qs||!qs.questions){ main.innerHTML='<div class="card">⚠ Connessione — riapri la prova.</div><button class="btn sm" onclick="renderEsame()">←</button>'; return; }
   let qi=0; const answers=[];
   function ask(){
