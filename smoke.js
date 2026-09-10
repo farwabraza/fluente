@@ -1,4 +1,4 @@
-// Headless smoke test for FLUENTE v3 features (not shipped to users; dev only)
+// Headless smoke test for FLUENTE (not shipped to users; dev only). Server-side checks live in smoke-server.js.
 const fs = require("fs");
 const { JSDOM } = require("jsdom");
 
@@ -580,6 +580,82 @@ setTimeout(async () => {
     await new Promise(r => setTimeout(r, 30));
     w.fetch = orig;
     if (!pinged) throw new Error("no ping");
+  });
+
+
+  /* ---------- v6.9: Pro wall (dormant scaffold) ---------- */
+  await T("Pro wall dormant by default: gate passes through, no Pro row, no ✦ marks", () => {
+    w.eval("S.placed=true; S.level='B1'; S.levelIdx=2; PLAN={enforce:false,plan:'free',until:0,checkout:'',signedIn:false}; enterApp();");
+    if (w.document.querySelector("#proRow")) throw new Error("proRow shown while dormant");
+    let ran = false; w.__g = () => { ran = true; }; w.eval("gate('esame_scritta', __g)");
+    if (!ran) throw new Error("gate blocked while dormant");
+    w.eval("renderEsame()");
+    if (!w.document.querySelector("#pScritta")) throw new Error("no esame buttons");
+    if (w.document.querySelector(".pro-mark")) throw new Error("✦ mark shown while dormant");
+    if (/✦ PRO/.test(w.document.querySelector("#hdrStats").textContent)) throw new Error("header pill shown while dormant");
+  });
+
+  await T("Pro wall ON + free plan: ✦ marks, Oggi Pro row, tapping a prova opens the upgrade sheet", () => {
+    w.eval("PLAN.enforce=true; PLAN.plan='free'; PLAN.checkout='https://buy.test/fluente'; renderEsame();");
+    if (w.document.querySelectorAll(".pro-mark").length !== 4) throw new Error("expected 4 marks, got " + w.document.querySelectorAll(".pro-mark").length);
+    w.document.querySelector("#pScritta").click();
+    const ov = w.eval("overlay.textContent");
+    if (!/FLUENTE PRO/.test(ov) || !/PROVA SCRITTA/.test(ov)) throw new Error("no upgrade sheet: " + ov.slice(0, 60));
+    const href = w.document.querySelector("#proGo").getAttribute("href");
+    if (!/buy\.test\/fluente\?checkout\[custom\]\[username\]=/.test(href)) throw new Error("checkout link: " + href);
+    w.eval("closeSheet(); setTab('oggi');");
+    if (!w.document.querySelector("#proRow")) throw new Error("no proRow on Oggi");
+    if (!/SCOPRI/.test(w.document.querySelector("#proRow").textContent)) throw new Error("proRow copy");
+  });
+
+  await T("Pro wall ON + pro plan: no marks, gate passes, header + Oggi show Pro active", () => {
+    w.eval("PLAN.plan='pro'; PLAN.until=Date.now()+86400e3; renderHeader(); renderEsame();");
+    if (w.document.querySelector(".pro-mark")) throw new Error("mark shown for pro user");
+    if (!/✦ PRO/.test(w.document.querySelector("#hdrStats").textContent)) throw new Error("no header pill");
+    let ran = false; w.__g = () => { ran = true; }; w.eval("gate('packs', __g)");
+    if (!ran) throw new Error("gate blocked a pro user");
+    w.eval("setTab('oggi')");
+    if (!/ATTIVO/.test(w.document.querySelector("#proRow").textContent)) throw new Error("proRow not ATTIVO");
+    w.eval("PLAN.until=Date.now()-1000; renderHeader();"); // expired → free again
+    if (/✦ PRO/.test(w.document.querySelector("#hdrStats").textContent)) throw new Error("expired plan still pro");
+    w.eval("PLAN={enforce:false,plan:'free',until:0,checkout:'',signedIn:false}; renderHeader();");
+  });
+
+  await T("ai() sends the feature tag and a bearer token when signed in", async () => {
+    const orig = w.fetch; let seen = null;
+    w.fetch = async (url, o) => {
+      if (String(url).includes("/api/chat")) { seen = { body: JSON.parse(o.body), auth: o.headers.Authorization }; return { status: 200, json: async () => ({ content: [{ type: "text", text: "ok" }] }) }; }
+      return orig(url, o);
+    };
+    w.eval("CREDS={username:'farwa',pin:'1234',token:'tok123'}");
+    const out = await w.eval("ai([{role:'user',content:'ciao'}],'sys',false,500,'coach')");
+    w.fetch = orig; w.eval("CREDS=null");
+    if (out !== "ok") throw new Error("got " + out);
+    if (seen.body.feature !== "coach") throw new Error("feature missing");
+    if (seen.auth !== "Bearer tok123") throw new Error("auth header: " + seen.auth);
+  });
+
+  await T("ai() turns a 402 pro_required into the upgrade sheet without retrying", async () => {
+    const orig = w.fetch; let calls = 0;
+    w.fetch = async (url, o) => {
+      if (String(url).includes("/api/chat")) { calls++; return { status: 402, json: async () => ({ error: { code: "pro_required", feature: "esame_orale", message: "Funzione Pro" }, checkoutUrl: "https://x.test/buy" }) }; }
+      return orig(url, o);
+    };
+    const out = await w.eval("ai([{role:'user',content:'ciao'}],'sys',true,500,'esame_orale')");
+    w.fetch = orig;
+    if (calls !== 1) throw new Error("calls=" + calls);
+    if (out !== null) throw new Error("expected null, got " + out);
+    const ov = w.eval("overlay.textContent");
+    if (!/PROVA ORALE/.test(ov) || !/Attiva Pro/.test(ov)) throw new Error("upgrade sheet missing");
+    if (!/x\.test\/buy/.test(w.document.querySelector("#proGo").getAttribute("href"))) throw new Error("checkout link missing");
+    w.eval("closeSheet()");
+  });
+
+  await T("every ai() call site carries a feature tag (26) and /api/plan is polled at boot", () => {
+    const tagged = (html.match(/,'(placement|scrivi|lesson_ai|checkpoint|parla|stealword|med|mnemonic|tutor|grammar|mental|ripara|coach|packs|accent7|plateau|esame_scritta|esame_orale|esame_ascolto|esame_lettura)'\)/g) || []).length;
+    const logErrTags = (html.match(/logErrs\([^)]*,'(scrivi|parla)'\)/g) || []).length; // pre-existing gap-map calls share the shape
+    if (tagged - logErrTags !== 26) throw new Error("tagged=" + (tagged - logErrTags));
+    if (!/refreshPlan\(\); \/\/ fire-and-forget/.test(html)) throw new Error("boot does not poll /api/plan");
   });
 
   console.log(results.join("\n"));

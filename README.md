@@ -8,6 +8,33 @@ with mnemonics, leech rescue, and production-direction recall.
 
 ---
 
+## What's new in v6.9 — ✦ Pro paywall (dormant)
+
+The paid tier exists in the code but **does nothing until you switch it on**. With no new environment variables set, v6.9 behaves exactly like v6.8 for every user: no Pro rows, no locks, no refused calls. The one visible-only-to-you change is a per-feature cost line in the server log (`[ai] esame_scritta farwa in=812 out=390`), which is the data you need to price Pro.
+
+**What's inside (all inert while dormant)**
+
+- **Server-owned plan.** `fluente_users` gains `plan`, `plan_until`, `email`, `token_hash`, `mor_customer_id` (added automatically with `ALTER TABLE … IF NOT EXISTS`; the client can never write these — `state` stays client-owned).
+- **Identity on AI calls.** `/api/auth` now also returns a bearer token (only its hash is stored); the app sends it with every `/api/chat` call together with a `feature` tag (`esame_scritta`, `coach`, `parla`, … — all 26 call sites are tagged).
+- **The wall** (`PRO_ENFORCE=1` only): outcome features are Pro — the four exam prove, Plateau Breaker, Vocab Packs, Mental Model, accent diagnosis, AI-built lessons — and refuse with `402 pro_required` for free accounts. Habit features stay free with a daily allowance (`parla` 20 turns, `ripara`/`scrivi`/`coach` 1 each). Lessons from the rulebook, Ripasso, Chicca, Scelta/Sprint/Dettato and the gap map never touch the wall.
+- **Client gate + upgrade sheet.** `gate(feature, fn)` is a pass-through while dormant. When enforced: ✦ PRO marks on gated rows, a "FLUENTE Pro" row on Oggi, a ✦ PRO pill in the header for subscribers, and an upgrade sheet with the checkout link (carrying the username so the purchase maps to the account) and a "Già Pro? Aggiorna" refresh.
+- **Payment webhook** `POST /api/webhook/mor` in Lemon Squeezy format (`X-Signature` = HMAC-SHA256 of the raw body): `subscription_created/updated/resumed/payment_success` → `plan='pro'` until `renews_at`; `cancelled/expired/paused/payment_failed` → access continues until `ends_at`, then free. Matches the account by `custom_data.username`, else by e-mail.
+- **Tests:** `node smoke.js` (63 jsdom checks) and `node smoke-server.js` (13 checks that boot the real server dormant *and* enforced, no DB needed).
+
+**Flip it on (three env vars) — and off again**
+
+1. `PRO_ENFORCE=1` — the wall exists. Unset it (or set `0`) to go back to fully free; nothing else needs to change and no data is lost.
+2. `CHECKOUT_URL` — your Lemon Squeezy (or Paddle) checkout link for the €9,99/month product.
+3. `MOR_WEBHOOK_SECRET` — the signing secret of the webhook you point at `https://<your-app>/api/webhook/mor` (subscribe it to the `subscription_*` events).
+
+To grant Pro by hand (a friend, a teacher, yourself): `UPDATE fluente_users SET plan='pro', plan_until=0 WHERE username='farwa';` — `plan_until=0` means no expiry.
+
+**Getting paid from Italy without Stripe** — the blocker is not Stripe, it's the partita IVA. A merchant of record (Lemon Squeezy, Paddle) is the legal seller: it invoices the customer, remits EU VAT and pays you out, and you can sign up with a codice fiscale. On the tax side, a monthly subscription is *habitual* income, so "prestazione occasionale" (≤ €5 000/year, non-habitual) is not the right box for it: open a **partita IVA in regime forfettario** (ATECO 62.01.00 software; 5 % substitute tax for the first five years on 67 % of revenue, INPS Gestione Separata on the same base; ~€0 to open, an online commercialista runs ≈ €300–500/year). Worked example at €1 000/month gross: MoR fee ≈ €55 → taxable base ≈ €633 → INPS ≈ €165 → tax ≈ €23 → **≈ €750/month net**. Confirm the details with a commercialista; forfettario is unavailable if last year's employee income exceeded €35 000.
+
+**Going back to the old version entirely:** `main` still holds v6.8 unchanged and the commit before this change is tagged `v6.8-pre-paywall`. Deploy `main`, or `git revert` the merge — your data is untouched either way (the new columns are simply ignored).
+
+---
+
 ## What's new in v6.8 — 🔥 Modalità Brutale (opt-in roast mode)
 
 Inspired by apps where the AI roasts your mistakes so hard you never make them again. Off by default; one tap on the **Modalità brutale** row (on Oggi or in Regole) arms it everywhere:
@@ -140,6 +167,7 @@ Render's free tier still includes web services — you're only charged if the se
 - `DATABASE_URL` — Neon connection string → enables logins + cross-device sync
 - `TRANSCRIBE_API_KEY` — free at console.groq.com → enables the iPhone mic
 - Optional: `CLAUDE_MODEL`, `DAILY_AI_LIMIT`, `RATE_LIMIT_PER_MIN`, `TRANSCRIBE_BASE_URL`, `TRANSCRIBE_MODEL`
+- Pro paywall (leave unset to stay fully free — see "What's new in v6.9"): `PRO_ENFORCE`, `CHECKOUT_URL`, `MOR_WEBHOOK_SECRET`
 
 💡 *Keeping Render awake:* a free uptime monitor (e.g. UptimeRobot) pinging your URL every 14 minutes prevents spin-down and fits inside the 750 free hours — a common pattern, though it burns your full monthly allowance on one service.
 
@@ -170,9 +198,9 @@ Honest options, simplest first:
 2. **Sell the app itself (one-time).** Zip + README on Gumroad/Lemon Squeezy as a
    "bring-your-own-API-key" product for self-hosters (€19–39). Zero marginal cost,
    zero support for API bills — buyers pay Anthropic directly.
-3. **True multi-tenant SaaS.** Add Stripe subscriptions + per-account (not per-IP)
-   metering in `server.js` — accounts already exist, so gating `/api/chat` on a
-   `plan` column is a small step. Do this only after option 1 proves demand.
+3. **True multi-tenant SaaS — already scaffolded (v6.9).** Per-account metering, a `plan`
+   column, feature gating on `/api/chat` and a merchant-of-record webhook are in `server.js`,
+   dormant. Set `PRO_ENFORCE=1`, `CHECKOUT_URL` and `MOR_WEBHOOK_SECRET` to switch it on.
 
 Positioning that differentiates it from Duolingo/Babbel: **exam outcomes** (CILS/CELI
 simulation → citizenship & university requirements), **verticals** (medical Italian for
@@ -189,9 +217,10 @@ Postgres you control) and a terms line; if selling to EU consumers, note GDPR ba
 | Piece | File |
 |---|---|
 | App (all of it) | `public/index.html` |
-| AI proxy + rate limits + accounts | `server.js` |
+| AI proxy + rate limits + accounts + dormant Pro wall + payment webhook | `server.js` |
 | PWA install/offline | `public/manifest.json`, `public/sw.js` |
-| Headless test suite (43 checks, dev-only) | `smoke.js` — `npm i jsdom --no-save && node smoke.js` |
+| Headless test suite (63 checks, dev-only) | `smoke.js` — `npm i jsdom --no-save && node smoke.js` |
+| Server smoke test (13 checks, boots server.js dormant + enforced) | `smoke-server.js` — `node smoke-server.js` |
 
 ## 6 · Tinkering map (everything is in index.html)
 
