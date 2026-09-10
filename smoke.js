@@ -753,6 +753,40 @@ setTimeout(async () => {
     if (!/done/.test(w.document.querySelector("#microRow").className)) throw new Error("micro row not marked done");
   });
 
+
+  /* ---------- v7: Telegram reminder row + linking flow ---------- */
+  await T("Promemoria row: signed-out → ACCEDI; signed-in not linked → VAI; linked → GESTISCI (brutale tone shown)", () => {
+    w.eval("CREDS=null; NUDGE={configured:true,linked:false,bot:'FluenteBot',known:true}; S.prefs={minutes:10,slot:'08:15',anchor:'dopo il caffè'}; setTab('oggi');");
+    if (!/ACCEDI/.test(w.document.querySelector("#nudgeRow").textContent)) throw new Error("signed-out row");
+    w.eval("CREDS={username:'farwa',pin:'1234',token:'t'}; S.brutale=true; setTab('oggi');");
+    const r = w.document.querySelector("#nudgeRow").textContent;
+    if (!/VAI/.test(r) || !/08:15 dopo il caffè/.test(r) || !/brutale/.test(r)) throw new Error("not-linked row: " + r);
+    w.eval("NUDGE.linked=true; setTab('oggi');");
+    if (!/GESTISCI/.test(w.document.querySelector("#nudgeRow").textContent) || !/brutale/.test(w.document.querySelector("#nudgeRow").textContent)) throw new Error("linked row");
+    w.eval("S.brutale=false; NUDGE.linked=false;");
+  });
+
+  await T("linking flow: Genera il codice → code + t.me link shown → Ho fatto verifies via /api/nudge/status → prefs.nudge='telegram'", async () => {
+    const orig = w.fetch; let linked = false; const seen = [];
+    w.fetch = async (url, o) => {
+      const u = String(url); seen.push(u + " " + ((o && o.headers && o.headers.Authorization) || "-"));
+      if (u.includes("/api/nudge/link")) { linked = true; return { ok: true, json: async () => ({ ok: true, code: "482913", bot: "FluenteBot", url: "https://t.me/FluenteBot?start=482913" }) }; }
+      if (u.includes("/api/nudge/status")) return { ok: true, json: async () => ({ configured: true, linked, bot: "FluenteBot", signedIn: true }) };
+      return orig(url, o);
+    };
+    w.eval("S.prefs.nudge='none'; setTab('oggi'); nudgeSheet();");
+    if (!/Collega Telegram in 3 tap/.test(w.eval("overlay.textContent"))) throw new Error("sheet not in link state");
+    w.document.querySelector("#ndLink").click(); await new Promise(r => setTimeout(r, 30));
+    if (!/482913/.test(w.eval("overlay.textContent"))) throw new Error("code not shown");
+    const a = w.document.querySelector("#ndCode a"); if (!a || !/t\.me\/FluenteBot\?start=482913/.test(a.getAttribute("href"))) throw new Error("t.me link missing");
+    w.document.querySelector("#ndDone").click(); await new Promise(r => setTimeout(r, 30));
+    if (!w.eval("NUDGE.linked")) throw new Error("status not refreshed");
+    if (S.prefs.nudge !== "telegram") throw new Error("prefs.nudge=" + S.prefs.nudge);
+    if (!/Collegato a @FluenteBot/.test(w.eval("overlay.textContent"))) throw new Error("sheet not in linked state");
+    if (!seen.some(x => /nudge\/link Bearer t/.test(x))) throw new Error("link call lacked bearer: " + seen.join(" | "));
+    w.fetch = orig; w.eval("closeSheet(); CREDS=null; NUDGE={configured:false,linked:false,bot:'',known:true};");
+  });
+
   console.log(results.join("\n"));
   const fails = results.filter(r=>r[0]==="✗").length;
   console.log(fails ? "\n"+fails+" FAILURES" : "\nALL PASS");

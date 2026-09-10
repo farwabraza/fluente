@@ -446,6 +446,63 @@ async function refreshPlan(){
   }catch(e){ /* offline or old server: stay dormant */ }
 }
 function isPro(){ return PLAN.plan==='pro' && (!PLAN.until || PLAN.until>Date.now()); }
+
+/* ---------- ACCOUNTABILITY: the Telegram reminder (server does the sending — see README) ---------- */
+let NUDGE={configured:false, linked:false, bot:'', known:false};
+async function refreshNudge(){
+  if(!CREDS) { NUDGE={configured:false, linked:false, bot:'', known:true}; return; }
+  try{ const r=await fetch('/api/nudge/status',{headers:aiHeaders(),cache:'no-store'}); const d=await r.json();
+    const was=NUDGE.linked; NUDGE={configured:!!d.configured, linked:!!d.linked, bot:d.bot||'', known:true};
+    if(NUDGE.linked!==was && TAB==='oggi' && $('#nudgeRow')) renderOggi();
+  }catch(e){}
+}
+function nudgeRow(){
+  const P=S.prefs||{}; const when=(P.slot||'08:15')+(P.anchor?' '+P.anchor:'');
+  if(!CREDS) return `<button class="mission" id="nudgeRow"><span style="font-size:1.3rem">🔔</span><span><b>Promemoria</b><br><span class="muted">Un messaggio Telegram all'ora del patto — accedi per attivarlo</span></span><span class="st-go" style="margin-left:auto">ACCEDI</span></button>`;
+  if(NUDGE.linked) return `<button class="mission" id="nudgeRow" style="border-left:5px solid var(--verde)"><span style="font-size:1.3rem">🔔</span><span><b>Promemoria Telegram attivo${S.brutale?' · 🔥 brutale':''}</b><br><span class="muted">alle ${esc(when)}${P.nudge==='none'?' · <b>in pausa</b>':''} — e alle 21 se non ti fai viva</span></span><span class="st-go" style="margin-left:auto">GESTISCI</span></button>`;
+  return `<button class="mission" id="nudgeRow" style="border-left:5px solid var(--giallo)"><span style="font-size:1.3rem">🔔</span><span><b>Attiva il promemoria Telegram</b><br><span class="muted">L'app non ti cerca da sola. Il bot sì: alle ${esc(when)}, ${S.brutale?'in modalità brutale 🔥':'con gentilezza'} — 20 secondi per collegarlo</span></span><span class="st-go" style="margin-left:auto">VAI</span></button>`;
+}
+function nudgeSheet(){
+  const P=S.prefs||{}; const when=(P.slot||'08:15')+(P.anchor?' '+P.anchor:'');
+  const DAYS=['L','M','M','G','V','S','D'];
+  const daysTxt=(P.days&&P.days.length&&P.days.length<7)?P.days.map(d=>DAYS[d-1]).join(' '):'tutti i giorni';
+  showSheet('<div class="eyebrow r">🔔 PROMEMORIA · IL BOT CHE TI CERCA</div>',`
+    <div class="card" style="background:var(--panel);color:var(--panel-tx)">
+      <div class="eyebrow" style="color:var(--giallo)">IL PATTO</div>
+      <h2>Alle ${esc(when)}${daysTxt!=='tutti i giorni'?' · '+esc(daysTxt):''}</h2>
+      <p style="font-size:.86rem;opacity:.9">Un messaggio all'ora del patto se non hai ancora fatto niente; un altro alle 21 se ancora niente; il lunedì la pagella della settimana. Ogni messaggio apre direttamente <b>la sessione minima</b> (2 minuti). ${S.brutale?'Tono: <b>modalità brutale</b> 🔥 — il bot insulta il salto, mai te.':'Tono: gentile 😇 — accendi la modalità brutale su Oggi se vuoi essere presa a parolacce.'}</p>
+      <button class="btn sm" id="ndEdit" style="background:var(--panel-2);color:var(--panel-tx);border-color:var(--panel-3);box-shadow:none">✎ cambia ora / giorni nella rotta</button>
+    </div>
+    <div id="ndBody">${!NUDGE.configured?`<div class="card" style="background:var(--carta2)"><b>Il server non ha ancora un bot Telegram.</b><br><span class="muted">Servono <code>TELEGRAM_BOT_TOKEN</code>, <code>TELEGRAM_BOT_NAME</code> e <code>CRON_KEY</code> + un cron orario — 10 minuti, istruzioni nel README.</span></div>`
+      : NUDGE.linked?`<div class="card"><b>✓ Collegato a @${esc(NUDGE.bot)}</b><div class="muted" style="font-size:.82rem;margin-top:4px">Scrivi <b>/oggi</b> al bot per lo stato, <b>fatto</b> quando hai studiato fuori dall'app, <b>/stop</b> per spegnerlo.</div>
+          <div class="row" style="margin-top:10px"><button class="btn dark" id="ndTest" style="flex:1">Mandami un messaggio di prova</button><button class="btn sm" id="ndPause" style="flex:.8;background:var(--carta2)">${P.nudge==='none'?'Riprendi':'Pausa'}</button></div>
+          <button class="btn sm block" id="ndUnlink" style="margin-top:8px;background:var(--carta2)">Scollega Telegram</button></div>`
+      :`<div class="card"><b>Collega Telegram in 3 tap</b>
+          <ol style="padding-left:18px;font-size:.88rem;line-height:1.7;margin:6px 0 0">
+            <li>Tocca <b>Apri il bot</b> — si apre Telegram su @${esc(NUDGE.bot)}</li>
+            <li>Premi <b>Start</b> (il codice è già nel link)</li>
+            <li>Torna qui e tocca <b>Ho fatto</b></li></ol>
+          <button class="btn primary block" id="ndLink" style="margin-top:10px">Genera il codice →</button>
+          <div id="ndCode"></div></div>`}</div>`);
+  $('#ndEdit').onclick=()=>{ closeSheet(); renderRotta(()=>setTab('oggi')); };
+  const L=$('#ndLink'); if(L) L.onclick=async()=>{
+    L.innerHTML='<span class="spinner"></span>';
+    try{ const r=await fetch('/api/nudge/link',{method:'POST',headers:aiHeaders()}); const d=await r.json();
+      if(!d.ok){ $('#ndCode').innerHTML=`<div class="muted" style="color:var(--rosso);font-weight:700;margin-top:8px">${esc((d.error&&d.error.message)||'Errore')}</div>`; L.textContent='Riprova'; return; }
+      L.style.display='none';
+      $('#ndCode').innerHTML=`<div style="text-align:center;margin-top:10px"><div class="eyebrow">CODICE</div><div style="font-family:var(--font-d);font-size:2.2rem;letter-spacing:.12em">${esc(d.code)}</div>
+        <a class="btn primary block" href="${esc(d.url)}" target="_blank" rel="noopener" style="text-decoration:none;text-align:center;margin-top:6px">Apri il bot @${esc(d.bot)} →</a>
+        <button class="btn green block" id="ndDone" style="margin-top:8px">Ho fatto — verifica</button>
+        <p class="muted" style="font-size:.76rem;margin-top:6px">Se Start non ha preso il codice, scrivi al bot: <b>/start ${esc(d.code)}</b></p></div>`;
+      $('#ndDone').onclick=async()=>{ $('#ndDone').innerHTML='<span class="spinner"></span>'; await refreshNudge();
+        if(NUDGE.linked){ if(S.prefs){ S.prefs.nudge='telegram'; save(); } toast('Telegram collegato ✓ Ora non hai più scuse.'); nudgeSheet(); }
+        else { $('#ndDone').textContent='Non ancora — premi Start nel bot, poi riprova'; } };
+    }catch(e){ L.textContent='Server non raggiungibile — riprova'; }
+  };
+  const T=$('#ndTest'); if(T) T.onclick=async()=>{ T.innerHTML='<span class="spinner"></span>'; try{ const r=await fetch('/api/nudge/test',{method:'POST',headers:aiHeaders()}); const d=await r.json(); T.textContent=d.ok?'Inviato ✓ guarda Telegram':'Non inviato: '+((d.error&&d.error.message)||d.telegram||'?'); }catch(e){ T.textContent='Server non raggiungibile'; } };
+  const Pz=$('#ndPause'); if(Pz) Pz.onclick=()=>{ if(!S.prefs) S.prefs={}; S.prefs.nudge=S.prefs.nudge==='none'?'telegram':'none'; save(); toast(S.prefs.nudge==='none'?'Promemoria in pausa':'Promemoria riattivato'); nudgeSheet(); };
+  const U=$('#ndUnlink'); if(U) U.onclick=async()=>{ if(!confirm('Scollegare Telegram? Puoi ricollegarlo quando vuoi.')) return; try{ await fetch('/api/nudge/unlink',{method:'POST',headers:aiHeaders()}); }catch(e){} NUDGE.linked=false; if(S.prefs){ S.prefs.nudge='none'; save(); } toast('Telegram scollegato'); nudgeSheet(); if(TAB==='oggi') renderOggi(); };
+}
 function gate(feature, fn){ return (!PLAN.enforce || isPro()) ? fn() : upgradeSheet(feature); }
 function proMark(){ return (PLAN.enforce && !isPro()) ? ' <span class="pro-mark">✦ PRO</span>' : ''; }
 const PRO_NAMES={esame_scritta:'Prova scritta',esame_orale:'Prova orale',esame_ascolto:"Prova d'ascolto",esame_lettura:'Prova di lettura',plateau:'Plateau Breaker',packs:'Vocab Packs',accent7:"Diagnosi dell'accento",mental:'Mental Model',lesson_ai:'Lezioni AI',parla:'Booth senza limiti',ripara:'Ripara senza limiti',scrivi:'Scrivi senza limiti',coach:'Coach senza limiti'};
@@ -1097,6 +1154,7 @@ function renderOggi(){
       ${S.goal&&S.goal.target?`<div class="stat"><div class="n">${S.level}→${esc(S.goal.target)}</div><div class="l">${dEx!==null&&dEx>=0?dEx+' gg all\'esame':'la tua meta'}</div></div>`:`<div class="stat"><div class="n">${S.level}</div><div class="l">your level</div></div>`}
     </div>
     ${rottaRow()}
+    ${nudgeRow()}
     ${microRow()}
     <div id="coachBox">
       ${S.coachPlan&&S.coachPlan.d===today()?'':`<button class="mission" id="coachGen"><span style="font-size:1.3rem">🎯</span><span><b>Il coach — tell me exactly what to do today</b><br><span class="muted">Reads your gaps, deck & exams → today's orders, ~20 min</span></span><span class="st-go" style="margin-left:auto">VAI</span></button>`}
@@ -1169,6 +1227,7 @@ function renderOggi(){
     </button>
   </div>`;
   $('#rottaRow').onclick=()=>renderRotta(()=>setTab('oggi'));
+  $('#nudgeRow').onclick=()=>{ if(!CREDS) renderLogin(); else nudgeSheet(); };
   $('#microRow').onclick=renderMicro;
   $('#m1').onclick=()=>setTab('linea');
   $('#m2').onclick=()=>setTab('parla');
@@ -1941,7 +2000,7 @@ function renderLogin(){
       const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,pin})});
       const d=await r.json();
       if(!d.ok){ $('#lgErr').textContent=(d.error&&d.error.message)||'Sign-in failed.'; $('#lgGo').disabled=false; $('#lgGo').textContent='Sign in / Create account →'; return; }
-      CREDS={username,pin}; applyAuth(d); localStorage.setItem('fluente-creds',JSON.stringify(CREDS)); refreshPlan();
+      CREDS={username,pin}; applyAuth(d); localStorage.setItem('fluente-creds',JSON.stringify(CREDS)); refreshPlan(); refreshNudge();
       syncStatus='cloud';
       if(d.state && (+d.updatedAt||0) >= (S._ts||0)){ S=Object.assign({},DEFAULT_STATE,d.state); localStorage.setItem('fluente-state',JSON.stringify(S)); }
       else if(S.placed){ pushState(); }
@@ -1959,7 +2018,7 @@ function enterApp(){
 }
 function signOut(){
   localStorage.removeItem('fluente-creds'); localStorage.removeItem('fluente-skip-login');
-  CREDS=null; syncStatus='local'; PLAN.plan='free'; PLAN.until=0; PLAN.signedIn=false; renderLogin();
+  CREDS=null; syncStatus='local'; PLAN.plan='free'; PLAN.until=0; PLAN.signedIn=false; NUDGE={configured:false,linked:false,bot:'',known:true}; renderLogin();
 }
 
 /* =========================================================
@@ -3472,6 +3531,7 @@ async function esameLettura(lv){
   detectSTT(); // fire-and-forget — resolves before the user typically reaches Parla
   await loadState();
   refreshPlan(); // fire-and-forget: learns whether this server runs the Pro wall (dormant by default)
+  refreshNudge(); // fire-and-forget: is Telegram linked for this account?
   renderHeader();
   if(!CREDS && !localStorage.getItem('fluente-skip-login')){ renderLogin(); }
   else enterApp();

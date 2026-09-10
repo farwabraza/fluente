@@ -217,7 +217,10 @@ if (process.env.DATABASE_URL) {
       ADD COLUMN IF NOT EXISTS plan_until BIGINT DEFAULT 0,
       ADD COLUMN IF NOT EXISTS email TEXT,
       ADD COLUMN IF NOT EXISTS token_hash TEXT,
-      ADD COLUMN IF NOT EXISTS mor_customer_id TEXT`))
+      ADD COLUMN IF NOT EXISTS mor_customer_id TEXT,
+      ADD COLUMN IF NOT EXISTS tg_chat_id TEXT,
+      ADD COLUMN IF NOT EXISTS tg_code TEXT,
+      ADD COLUMN IF NOT EXISTS tg_meta JSONB DEFAULT '{}'::jsonb`))
     .then(() => console.log("DB ready — cloud sync ON" + (PRO_ENFORCE ? " · Pro wall ON" : " · Pro wall dormant")))
     .catch((e) => console.error("DB init failed:", e.message));
 } else {
@@ -264,6 +267,199 @@ app.put("/api/state", rateLimit, async (req, res) => {
     if (!r.rows.length || r.rows[0].pinhash !== h) return res.status(401).json({ error: { message: "Auth failed." } });
     await pool.query("UPDATE fluente_users SET state=$2, updated_at=$3 WHERE username=$1", [u, state, updatedAt || Date.now()]);
     res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: { message: "DB error: " + e.message } }); }
+});
+
+// ---------- ACCOUNTABILITY: TELEGRAM NUDGES (needs TELEGRAM_BOT_TOKEN + CRON_KEY — see README) ----------
+// The app never reaches out on its own — this does. An external scheduler (cron-job.org, GitHub Actions…)
+// hits GET /api/cron/nudge?key=CRON_KEY once an hour; for every linked account we read prefs + xpLog straight
+// out of the synced state (no new tables) and send, in the learner's own timezone:
+//   · at the pact hour, if nothing was done yet today   → "slot" message (+ the Monday report card)
+//   · at 21:00, if still nothing                        → "evening" message
+// Tone follows the learner's own setting: Modalità Brutale on → the bot roasts the skip (never the person).
+// The hourly ping also keeps a free-tier server awake.
+const TG_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
+const TG_BOT = (process.env.TELEGRAM_BOT_NAME || "").replace(/^@/, "");
+const TG_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET || "";
+const CRON_KEY = process.env.CRON_KEY || "";
+const APP_URL = (process.env.APP_URL || "").replace(/\/+$/, "");
+const appUrl = (req) => APP_URL || ((req.headers["x-forwarded-proto"] || "https") + "://" + req.headers.host);
+
+// Message bank. {name} {slot} {anchor} {streak} {due} {gap} {days} {link} {xp} {best} are filled in.
+const NUDGE = {
+  gentile: {
+    slot: [
+      "Sono le {slot}{anchor}. Due minuti: una carta, due scelte, una frase. {link}",
+      "{name}, la fermata di oggi ti aspetta. Streak {streak} 🔥 · {due} carte in attesa. {link}",
+      "Il patto era {slot}{anchor}. Non serve una sessione eroica — serve la sessione minima. {link}",
+      "Oggi la lacuna da riparare è: {gap}. Cinque frasi e il contatore scende. {link}",
+    ],
+    evening: [
+      "Oggi ancora niente. La sessione minima sono 2 minuti — la streak di {streak} giorni vale più di così. {link}",
+      "Sono le 21. Una carta, due scelte, una frase, e la giornata è salva. {link}",
+      "Non serve recuperare: serve non saltare due volte. Due minuti. {link}",
+    ],
+    weekly: "📋 Pagella della settimana\n· XP: {xp}\n· Giorni attivi: {days}/7\n· Streak: {streak} (record {best})\n· Lacuna n.1: {gap}\n{daysToExam}Nuova settimana, stesso patto: {slot}{anchor}. {link}",
+    welcome: "Collegato ✓ Ti scrivo alle {slot}{anchor}, e alle 21 se non ti sei fatta viva. Scrivi /oggi per lo stato, /stop per zittirmi.",
+    ack: "Segnato ✓ Brava.",
+    status: "🔥 Streak {streak} · {due} carte in attesa · oggi: {done}\n{link}",
+    bye: "Promemoria spento. Quando vuoi, ricollegami dall'app.",
+  },
+  brutale: {
+    slot: [
+      "Oh, {name}. Sono le {slot}. Il caffè l'hai preso, l'italiano no. Due minuti, cazzo. {link}",
+      "Sveglia. {due} carte ti guardano male da stamattina. Anche il mio gatto ha più costanza — e non ho un gatto. {link}",
+      "Alle {slot} dovevi aprire Fluente, non Instagram. Sessione minima, ORA, poi torni a fare la sciura. {link}",
+      "La tua lacuna preferita, {gap}, ringrazia per la giornata libera. Vai a rovinargliela. {link}",
+    ],
+    evening: [
+      "Sono le 21 e oggi zero. ZERO. La streak di {streak} giorni sta morendo di pigrizia, non di mancanza di tempo. Due minuti. {link}",
+      "Ma dai. Domani il paziente non aspetta che tu ripassi le preposizioni. Sessione minima, che cavolo. {link}",
+      "Se salti anche stasera la streak la seppelliamo insieme. Fiori no, grazie. {link}",
+    ],
+    weekly: "📋 Pagella, e non fare quella faccia\n· XP: {xp}\n· Giorni attivi: {days}/7 {verdict}\n· Streak: {streak} (record {best})\n· Lacuna n.1: {gap} — ancora lei, che sorpresa\n{daysToExam}Nuova settimana. Alle {slot}{anchor}. Niente storie. {link}",
+    welcome: "Collegato. Ora non hai più scuse. Alle {slot}{anchor} ti rompo le scatole; alle 21 di nuovo se fai la furba. /oggi per lo stato, /stop se sei codarda.",
+    ack: "Miracolo. Segna la data. ✓",
+    status: "🔥 Streak {streak} · {due} carte che ti aspettano · oggi: {done}\n{link}",
+    bye: "Spento. Vediamo quanto duri da sola. (Poco.)",
+  },
+};
+const pick = (arr, seed) => arr[Math.abs(seed) % arr.length];
+function fill(tpl, v) { return tpl.replace(/\{(\w+)\}/g, (m, k) => (v[k] == null ? "" : String(v[k]))); }
+// Everything the messages need, derived from the synced state (client-owned) — never stored server-side.
+function nudgeVars(row, req, dayKey) {
+  const st = row.state || {}, prefs = st.prefs || {}, goal = st.goal || {};
+  const xpLog = st.xpLog || {};
+  const week = []; for (let i = 0; i < 7; i++) { const d = new Date(Date.now() - i * 86400e3); week.push(localDay(d, prefs.tz)); }
+  const xp = week.reduce((s, k) => s + (xpLog[k] || 0), 0), days = week.filter((k) => xpLog[k]).length;
+  const gaps = Object.entries(st.errLog || {}).filter(([, e]) => e && e.n > 0).sort((a, b) => b[1].n - a[1].n);
+  const gapNames = { tempo_passati: "passato prossimo vs imperfetto", congiuntivo_quando: "quando scatta il congiuntivo", congiuntivo_forma: "le forme del congiuntivo", condizionale: "condizionale e ipotetiche", futuro: "il futuro", ausiliare: "essere vs avere", coniugazione: "le coniugazioni", concordanza: "la concordanza", preposizioni: "le preposizioni", articoli: "gli articoli", pronomi: "i pronomi", ordine_parole: "l'ordine delle parole", vocab: "la scelta delle parole", ortografia: "ortografia e accenti", registro: "il registro" };
+  const due = Array.isArray(st.deck) ? st.deck.filter((c) => c && c.due <= Date.now()).length : 0;
+  let daysToExam = "";
+  if (goal.examDate) { const n = Math.ceil((Date.parse(goal.examDate) - Date.parse(dayKey)) / 86400e3); if (n >= 0) daysToExam = `· ${n} giorni all'esame ${goal.target || ""}\n`; }
+  return {
+    name: st.name || row.username, slot: prefs.slot || "08:15", anchor: prefs.anchor ? " " + prefs.anchor : "",
+    streak: st.streak || 0, best: st.streakBest || st.streak || 0, due, gap: gaps[0] ? gapNames[gaps[0][0]] || gaps[0][0] : "nessuna mappata (parla e vediamo)",
+    xp, days, verdict: days >= 6 ? "— rispetto." : days >= 4 ? "— così così." : "— ma dai.", daysToExam,
+    done: xpLog[dayKey] ? "fatto ✓" : "niente, per ora",
+    link: appUrl(req) + "/?go=micro",
+  };
+}
+function localDay(d, tz) { try { return new Intl.DateTimeFormat("en-CA", { timeZone: tz || "Europe/Rome", year: "numeric", month: "2-digit", day: "2-digit" }).format(d); } catch (e) { return d.toISOString().slice(0, 10); } }
+function localHour(d, tz) { try { return +new Intl.DateTimeFormat("en-GB", { timeZone: tz || "Europe/Rome", hour: "2-digit", hour12: false }).format(d).slice(0, 2) % 24; } catch (e) { return d.getUTCHours(); } }
+function localDow(d, tz) { try { return ({ Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 })[new Intl.DateTimeFormat("en-US", { timeZone: tz || "Europe/Rome", weekday: "short" }).format(d)] || 1; } catch (e) { return ((d.getUTCDay() + 6) % 7) + 1; } }
+function composeNudge(kind, row, req, dayKey) {
+  const v = nudgeVars(row, req, dayKey || localDay(new Date(), (row.state && row.state.prefs && row.state.prefs.tz) || undefined));
+  const bank = NUDGE[row.state && row.state.brutale ? "brutale" : "gentile"];
+  const seed = (dayKey || "").split("-").reduce((s, x) => s + (+x || 0), 0) + row.username.length;
+  const t = Array.isArray(bank[kind]) ? pick(bank[kind], seed) : bank[kind];
+  return fill(t, v);
+}
+async function tgSend(chatId, text) {
+  if (!TG_TOKEN) return { ok: false, description: "TELEGRAM_BOT_TOKEN not set" };
+  const r = await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ chat_id: chatId, text, disable_web_page_preview: true }) });
+  return r.json().catch(() => ({ ok: false }));
+}
+const needUser = (req, res) => { if (!pool) { res.status(503).json({ error: { message: "Sync not configured on the server." } }); return false; } if (!req.user) { res.status(401).json({ error: { message: "Accedi per usare i promemoria." } }); return false; } return true; };
+const tgConfigured = () => !!(TG_TOKEN && TG_BOT);
+
+app.get("/api/nudge/status", withUser, async (req, res) => {
+  const out = { configured: tgConfigured(), bot: TG_BOT, linked: false, signedIn: !!req.user };
+  if (pool && req.user) {
+    try { const r = await pool.query("SELECT tg_chat_id FROM fluente_users WHERE username=$1", [req.user.username]); out.linked = !!(r.rows[0] && r.rows[0].tg_chat_id); } catch (e) {}
+  }
+  res.json(out);
+});
+app.post("/api/nudge/link", rateLimit, withUser, async (req, res) => {
+  if (!needUser(req, res)) return;
+  if (!tgConfigured()) return res.status(503).json({ error: { message: "Telegram non è configurato su questo server — aggiungi TELEGRAM_BOT_TOKEN e TELEGRAM_BOT_NAME (README)." } });
+  const code = String(crypto.randomInt(100000, 999999));
+  try {
+    await pool.query("UPDATE fluente_users SET tg_code=$2 WHERE username=$1", [req.user.username, code]);
+    res.json({ ok: true, code, bot: TG_BOT, url: `https://t.me/${TG_BOT}?start=${code}` });
+  } catch (e) { res.status(500).json({ error: { message: "DB error: " + e.message } }); }
+});
+app.post("/api/nudge/unlink", rateLimit, withUser, async (req, res) => {
+  if (!needUser(req, res)) return;
+  try {
+    const r = await pool.query("UPDATE fluente_users SET tg_chat_id=NULL, tg_code=NULL WHERE username=$1 RETURNING tg_chat_id", [req.user.username]);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: { message: "DB error: " + e.message } }); }
+});
+// Sends the real slot message right now — so the learner hears the voice they chose before trusting it.
+app.post("/api/nudge/test", rateLimit, withUser, async (req, res) => {
+  if (!needUser(req, res)) return;
+  try {
+    const r = await pool.query("SELECT username, tg_chat_id, state FROM fluente_users WHERE username=$1", [req.user.username]);
+    const row = r.rows[0];
+    if (!row || !row.tg_chat_id) return res.status(400).json({ error: { message: "Telegram non ancora collegato." } });
+    const tz = row.state && row.state.prefs && row.state.prefs.tz;
+    const out = await tgSend(row.tg_chat_id, composeNudge("slot", row, req, localDay(new Date(), tz)));
+    res.json({ ok: !!out.ok, telegram: out.description || undefined });
+  } catch (e) { res.status(500).json({ error: { message: "DB error: " + e.message } }); }
+});
+// Telegram → us. Set with GET /api/telegram/setup?key=CRON_KEY (or manually via setWebhook).
+app.post("/api/telegram", async (req, res) => {
+  if (!TG_TOKEN) return res.status(503).json({ ok: false });
+  if (TG_SECRET && req.headers["x-telegram-bot-api-secret-token"] !== TG_SECRET) return res.status(401).json({ ok: false });
+  res.json({ ok: true }); // answer Telegram immediately; do the work after
+  if (!pool) return;
+  const msg = (req.body && (req.body.message || req.body.edited_message)) || null;
+  if (!msg || !msg.chat || typeof msg.text !== "string") return;
+  const chatId = String(msg.chat.id), text = msg.text.trim();
+  try {
+    const m = text.match(/^\/start\s+(\d{6})$/);
+    if (m) {
+      const r = await pool.query("UPDATE fluente_users SET tg_chat_id=$2, tg_code=NULL, tg_meta=COALESCE(tg_meta,'{}'::jsonb)||$3::jsonb WHERE tg_code=$1 RETURNING username, state", [m[1], chatId, JSON.stringify({ linkedAt: Date.now() })]);
+      if (!r.rowCount) return void tgSend(chatId, "Codice non valido o scaduto — genera un nuovo codice dall'app (Oggi → Promemoria).");
+      return void tgSend(chatId, composeNudge("welcome", r.rows[0], req, localDay(new Date())));
+    }
+    const r = await pool.query("SELECT username, state FROM fluente_users WHERE tg_chat_id=$1", [chatId]);
+    const row = r.rows[0];
+    if (!row) return void tgSend(chatId, "Non ti conosco ancora. Apri Fluente → Oggi → Promemoria → Collega Telegram.");
+    const tz = row.state && row.state.prefs && row.state.prefs.tz;
+    if (/^\/stop\b/i.test(text)) { await pool.query("UPDATE fluente_users SET tg_chat_id=NULL WHERE username=$1", [row.username]); return void tgSend(chatId, composeNudge("bye", row, req, localDay(new Date(), tz))); }
+    if (/^fatto\b/i.test(text)) return void tgSend(chatId, composeNudge("ack", row, req, localDay(new Date(), tz)));
+    return void tgSend(chatId, composeNudge("status", row, req, localDay(new Date(), tz)));
+  } catch (e) { console.error("[tg]", e.message); }
+});
+app.get("/api/telegram/setup", async (req, res) => {
+  if (!CRON_KEY || req.query.key !== CRON_KEY) return res.status(401).json({ error: { message: "Bad key." } });
+  if (!TG_TOKEN) return res.status(503).json({ error: { message: "TELEGRAM_BOT_TOKEN not set." } });
+  try {
+    const r = await fetch(`https://api.telegram.org/bot${TG_TOKEN}/setWebhook`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url: appUrl(req) + "/api/telegram", secret_token: TG_SECRET || undefined, allowed_updates: ["message"] }) });
+    res.json(await r.json());
+  } catch (e) { res.status(502).json({ error: { message: e.message } }); }
+});
+// The hourly heartbeat. Idempotent per (user, day, kind) via tg_meta.last.
+app.get("/api/cron/nudge", async (req, res) => {
+  if (!CRON_KEY || req.query.key !== CRON_KEY) return res.status(401).json({ error: { message: "Bad key." } });
+  if (!pool) return res.status(503).json({ error: { message: "Sync not configured — nothing to nudge." } });
+  if (!TG_TOKEN) return res.json({ ok: true, checked: 0, sent: [], note: "TELEGRAM_BOT_TOKEN not set" });
+  const now = new Date(), sent = [], dry = req.query.dry === "1";
+  try {
+    const r = await pool.query("SELECT username, tg_chat_id, tg_meta, state FROM fluente_users WHERE tg_chat_id IS NOT NULL");
+    for (const row of r.rows) {
+      const st = row.state || {}, prefs = st.prefs || {};
+      if (prefs.nudge === "none") continue;
+      const tz = prefs.tz || "Europe/Rome", day = localDay(now, tz), hour = localHour(now, tz), dow = localDow(now, tz);
+      if (Array.isArray(prefs.days) && prefs.days.length && !prefs.days.includes(dow)) continue;
+      const slotHour = parseInt((prefs.slot || "08:15").slice(0, 2)) || 8;
+      const doneToday = !!((st.xpLog || {})[day]);
+      const last = (row.tg_meta && row.tg_meta.last) || {};
+      let kind = null;
+      if (hour === slotHour && !doneToday && !(last.day === day && (last.kind === "slot" || last.kind === "weekly"))) kind = dow === 1 ? "weekly" : "slot";
+      else if (hour === 21 && slotHour < 21 && !doneToday && !(last.day === day && last.kind === "evening")) kind = "evening";
+      if (!kind) continue;
+      const text = composeNudge(kind, row, req, day);
+      if (!dry) {
+        const out = await tgSend(row.tg_chat_id, text);
+        if (out && out.ok) await pool.query("UPDATE fluente_users SET tg_meta=COALESCE(tg_meta,'{}'::jsonb)||$2::jsonb WHERE username=$1", [row.username, JSON.stringify({ last: { day, kind } })]);
+        else if (out && /blocked|chat not found|deactivated/i.test(out.description || "")) await pool.query("UPDATE fluente_users SET tg_chat_id=NULL WHERE username=$1", [row.username]);
+      }
+      sent.push({ username: row.username, kind, preview: dry ? text : undefined });
+    }
+    res.json({ ok: true, checked: r.rowCount, sent });
   } catch (e) { res.status(500).json({ error: { message: "DB error: " + e.message } }); }
 });
 
@@ -316,4 +512,7 @@ app.post("/api/webhook/mor", async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, "0.0.0.0", () => console.log("FLUENTE in partenza → http://localhost:" + PORT + (PRO_ENFORCE ? " · Pro wall ON" : "")));
+if (require.main === module) {
+  app.listen(PORT, "0.0.0.0", () => console.log("FLUENTE in partenza → http://localhost:" + PORT + (PRO_ENFORCE ? " · Pro wall ON" : "") + (TG_TOKEN ? " · Telegram ON" : "")));
+}
+module.exports = { app, composeNudge, NUDGE, localDay, localHour, localDow };
