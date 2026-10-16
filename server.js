@@ -11,19 +11,26 @@ app.use(express.static(path.join(__dirname, "public")));
 // Health check — also used by the client at boot to wake a sleeping free-tier instance early
 app.get("/api/health", (req, res) => res.json({ ok: true }));
 
-// Tiny in-memory rate limit so a leaked URL can't drain your credits
-// (default 60/min per IP; note users behind the same WiFi share an IP — raise via RATE_LIMIT_PER_MIN)
+// Tiny in-memory rate limit so a leaked URL can't drain your credits.
+// Keyed per ACCOUNT when the client sends its username (so two people on the
+// same WiFi don't share a budget), per IP otherwise.
 const RATE_PER_MIN = parseInt(process.env.RATE_LIMIT_PER_MIN) || 60;
 const hits = new Map();
-const daily = new Map(); // per-IP daily AI-call counter (optional cap for shared/sold deployments)
+const daily = new Map(); // per-account/IP daily AI-call counter (optional cap for shared/sold deployments)
 let dailyKey = new Date().toISOString().slice(0, 10);
+function rateKey(req) {
+  const b = req.body || {};
+  const u = (typeof b.u === "string" && b.u.trim()) || (typeof b.username === "string" && b.username.trim());
+  if (u) return "u:" + u.slice(0, 40).toLowerCase();
+  return "ip:" + (req.headers["x-forwarded-for"] || req.ip || "x");
+}
 function rateLimit(req, res, next) {
-  const ip = req.headers["x-forwarded-for"] || req.ip || "x";
+  const key = rateKey(req);
   const now = Date.now();
   const windowStart = now - 60_000;
-  const arr = (hits.get(ip) || []).filter((t) => t > windowStart);
+  const arr = (hits.get(key) || []).filter((t) => t > windowStart);
   arr.push(now);
-  hits.set(ip, arr);
+  hits.set(key, arr);
   if (arr.length > RATE_PER_MIN) {
     return res.status(429).json({ error: { message: "Slow down — too many requests this minute." } });
   }
@@ -34,9 +41,9 @@ function dailyCap(req, res, next) {
   if (!cap) return next();
   const today = new Date().toISOString().slice(0, 10);
   if (today !== dailyKey) { dailyKey = today; daily.clear(); }
-  const ip = req.headers["x-forwarded-for"] || req.ip || "x";
-  const n = (daily.get(ip) || 0) + 1;
-  daily.set(ip, n);
+  const key = rateKey(req);
+  const n = (daily.get(key) || 0) + 1;
+  daily.set(key, n);
   if (n > cap) {
     return res.status(429).json({ error: { message: "Daily AI limit reached — come back tomorrow (or upgrade your plan)." } });
   }
