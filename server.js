@@ -257,6 +257,21 @@ app.delete("/api/admin/invite/:code", rateLimit, adminAuth, async (req, res) => 
   } catch (e) { res.status(500).json({ error: { message: "DB error: " + e.message } }); }
 });
 
+// Forgotten-PIN rescue: set a new PIN for an existing account WITHOUT touching
+// its progress. The user then signs in with the same username + the new PIN.
+app.post("/api/admin/reset-pin", rateLimit, adminAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: { message: "No DATABASE_URL." } });
+  const { username, pin } = req.body || {};
+  if (!saneUser(username) || !pin || String(pin).length < 4)
+    return res.status(400).json({ error: { message: "Username + a new PIN of at least 4 characters required." } });
+  const u = username.toLowerCase();
+  try {
+    const r = await pool.query("UPDATE fluente_users SET pinhash=$2 WHERE username=$1", [u, hashPin(u, pin)]);
+    if (!r.rowCount) return res.status(404).json({ error: { message: "No account with that username." } });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: { message: "DB error: " + e.message } }); }
+});
+
 const PORT = process.env.PORT || 3000;
 if (require.main === module) {
   app.listen(PORT, "0.0.0.0", () => console.log("FLUENTE in partenza → http://localhost:" + PORT));

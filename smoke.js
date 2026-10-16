@@ -697,6 +697,7 @@ setTimeout(async () => {
       }
       if (sql.startsWith("INSERT INTO fluente_users")) { users.set(p[0], { username: p[0], pinhash: p[1], created_at: p[2], last_seen: p[2], invite_code: p[3], state: null, updated_at: 0 }); return { rows: [] }; }
       if (sql.startsWith("UPDATE fluente_users SET last_seen")) { const u = users.get(p[0]); if (u) u.last_seen = p[1]; return { rows: [] }; }
+      if (sql.startsWith("UPDATE fluente_users SET pinhash")) { const u = users.get(p[0]); if (u) u.pinhash = p[1]; return { rowCount: u ? 1 : 0, rows: [] }; }
       if (sql.startsWith("UPDATE fluente_users SET state")) { const u = users.get(p[0]); if (u) { u.state = p[1]; u.updated_at = p[2]; u.last_seen = p[3]; } return { rows: [] }; }
       if (sql.startsWith("SELECT username, created_at, last_seen, invite_code")) return { rows: [...users.values()] };
       if (sql.startsWith("SELECT code, note, created_at, used_by, used_at")) return { rows: [...invites.values()] };
@@ -732,14 +733,26 @@ setTimeout(async () => {
       if (!r.body.deleted) throw new Error("revoking an unused code failed");
       r = await call("DELETE", "/api/admin/invite/" + code, null, { "x-admin-key": "test-admin-key" });
       if (r.body.deleted) throw new Error("a USED code was deleted — history must be immutable");
+      // forgotten-PIN rescue: reset keeps the account (and so the progress), old PIN dies, new PIN works
+      r = await call("POST", "/api/admin/reset-pin", { username: "ghost", pin: "5678" }, { "x-admin-key": "test-admin-key" });
+      if (r.status !== 404) throw new Error("reset on unknown user: " + r.status);
+      r = await call("POST", "/api/admin/reset-pin", { username: "newdoc", pin: "5678" }, { "x-admin-key": "nope" });
+      if (r.status !== 401) throw new Error("reset with wrong admin key accepted");
+      r = await call("POST", "/api/admin/reset-pin", { username: "newdoc", pin: "5678" }, { "x-admin-key": "test-admin-key" });
+      if (!r.body.ok) throw new Error("reset failed: " + JSON.stringify(r.body));
+      r = await call("POST", "/api/auth", { username: "newdoc", pin: "1234" });
+      if (r.status !== 401) throw new Error("old PIN still works after reset");
+      r = await call("POST", "/api/auth", { username: "newdoc", pin: "5678" });
+      if (!r.body.ok || r.body.created) throw new Error("new PIN sign-in broken (or account was recreated): " + JSON.stringify(r.body));
     } finally { server.close(); }
   });
 
   await T("admin panel page exists and talks to the admin API", () => {
     const ad = fs.readFileSync("public/admin.html", "utf8");
-    for (const bit of ["/api/admin/overview", "/api/admin/invite", "x-admin-key", "noindex"]) {
+    for (const bit of ["/api/admin/overview", "/api/admin/invite", "/api/admin/reset-pin", "x-admin-key", "noindex"]) {
       if (!ad.includes(bit)) throw new Error(bit + " missing from admin.html");
     }
+    if (html.includes("e.g. farwa")) throw new Error("personal name still in login placeholder");
   });
 
 

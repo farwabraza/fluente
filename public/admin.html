@@ -53,8 +53,8 @@ code{background:color-mix(in srgb,var(--ink) 8%, transparent);padding:2px 7px;bo
   </div>
 
   <div class="eyebrow">👥 UTENTI — who's signed up & when they were last seen</div>
-  <div class="card"><table id="usersT"><thead><tr><th>username</th><th>joined</th><th>last seen</th><th>invite</th></tr></thead><tbody></tbody></table>
-  <p class="muted" style="margin:8px 0 0">"Last seen" updates on every sign-in and cloud sync. Accounts created before v7.1 show "—" until their next sign-in.</p></div>
+  <div class="card"><table id="usersT"><thead><tr><th>username</th><th>joined</th><th>last seen</th><th>invite</th><th></th></tr></thead><tbody></tbody></table>
+  <p class="muted" style="margin:8px 0 0">"Last seen" updates on every sign-in and cloud sync. Accounts created before v7.1 show "—" until their next sign-in. <b>PIN</b> resets a forgotten PIN — same username, progress untouched.</p></div>
 
   <div class="eyebrow">⚡ AI CALLS TODAY — the upgrade-the-server signal</div>
   <div class="card"><table id="aiT"><thead><tr><th>who</th><th>calls</th></tr></thead><tbody></tbody></table>
@@ -98,7 +98,7 @@ async function load(){
   $('#nActive').textContent=d.users.filter(u=>+u.last_seen>week).length;
   $('#nCalls').textContent=d.aiToday.reduce((n,x)=>n+x.n,0);
   $('#caps').textContent='Limits: '+d.rateLimitPerMin+'/min'+(d.dailyCap?(', '+d.dailyCap+'/day per account'):', no daily cap set');
-  $('#usersT tbody').innerHTML=d.users.map(u=>`<tr><td><b>${esc(u.username)}</b></td><td>${day(u.created_at)}</td><td>${ago(u.last_seen)}</td><td>${esc(u.invite_code||'—')}</td></tr>`).join('')||'<tr><td colspan="4" class="muted">No accounts yet.</td></tr>';
+  $('#usersT tbody').innerHTML=d.users.map(u=>`<tr><td><b>${esc(u.username)}</b></td><td>${day(u.created_at)}</td><td>${ago(u.last_seen)}</td><td>${esc(u.invite_code||'—')}</td><td><button class="sm ghost" data-rp="${esc(u.username)}">PIN</button></td></tr>`).join('')||'<tr><td colspan="5" class="muted">No accounts yet.</td></tr>';
   $('#aiT tbody').innerHTML=d.aiToday.map(x=>`<tr><td>${esc(x.key.replace(/^u:/,'👤 ').replace(/^ip:/,'🌐 '))}</td><td>${x.n}</td></tr>`).join('')||'<tr><td colspan="2" class="muted">No AI calls yet today (or the server just restarted).</td></tr>';
   $('#invT tbody').innerHTML=d.invites.map(i=>`<tr>
     <td><code>${esc(i.code)}</code> <button class="sm ghost" data-copy="${esc(i.code)}">copia</button></td>
@@ -106,6 +106,18 @@ async function load(){
     <td>${i.used_by?`<span class="tag ok">used · ${esc(i.used_by)}</span>`:`<span class="tag wait">unused</span>`}</td>
     <td>${i.used_by?'':`<button class="sm ghost" data-del="${esc(i.code)}">✕</button>`}</td></tr>`).join('')||'<tr><td colspan="4" class="muted">No codes yet — generate one above.</td></tr>';
   document.querySelectorAll('[data-copy]').forEach(b=>b.onclick=()=>{navigator.clipboard&&navigator.clipboard.writeText(b.dataset.copy);b.textContent='✓';});
+  document.querySelectorAll('[data-rp]').forEach(b=>b.onclick=()=>{
+    const un=b.dataset.rp, td=b.parentElement;
+    td.innerHTML=`<span class="row" style="gap:4px"><input id="rpIn" type="password" placeholder="new PIN" style="width:92px;padding:5px 8px"><button class="sm" id="rpGo">✓</button></span><div class="muted" id="rpMsg" style="font-size:.7rem"></div>`;
+    td.querySelector('#rpGo').onclick=async()=>{
+      const pin=td.querySelector('#rpIn').value;
+      if(pin.length<4){ td.querySelector('#rpMsg').textContent='4+ characters'; return; }
+      try{ await api('/api/admin/reset-pin',{method:'POST',body:JSON.stringify({username:un,pin})});
+        td.innerHTML='<span class="tag ok">PIN reset ✓</span>';
+        setTimeout(load, 1200);
+      }catch(e){ td.querySelector('#rpMsg').textContent=e.message; }
+    };
+  });
   document.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{ if(confirm('Revoke unused code '+b.dataset.del+'?')){ await api('/api/admin/invite/'+encodeURIComponent(b.dataset.del),{method:'DELETE'}); load(); }});
 }
 $('#go').onclick=async()=>{ KEY=$('#key').value.trim(); $('#err').textContent='';
