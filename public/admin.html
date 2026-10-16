@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Pannello FLUENTE</title>
+<style>
+:root{--carta:#F6F1E7;--surface:#FFFDF8;--ink:#17171C;--ink2:#6B655A;--rosso:#E0312E;--verde:#1E7A52;--giallo:#F2B705;--blu:#1D3C8F;--line:#D8D0C0}
+:root:not([data-theme="light"]){color-scheme:light dark}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--carta:#201C19;--surface:#2A2522;--ink:#F2EBDF;--ink2:#A89F8F;--line:#453E36}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--carta);color:var(--ink);font:16px/1.45 "Hanken Grotesk",system-ui,sans-serif;padding:16px;max-width:760px;margin-inline:auto}
+h1{font-size:1.5rem;margin:6px 0 2px}
+.eyebrow{font-size:.66rem;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--ink2);margin:18px 0 6px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px}
+input,button{font:inherit}
+input{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)}
+button{padding:10px 14px;border:1px solid var(--line);border-radius:10px;background:var(--ink);color:var(--carta);font-weight:700;cursor:pointer}
+button.ghost{background:var(--surface);color:var(--ink)}
+button.sm{padding:5px 10px;font-size:.8rem}
+table{width:100%;border-collapse:collapse;font-size:.86rem}
+th,td{text-align:left;padding:7px 8px;border-top:1px solid var(--line);vertical-align:top}
+th{border-top:none;font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;color:var(--ink2)}
+.tag{display:inline-block;padding:2px 8px;border-radius:99px;font-size:.7rem;font-weight:700;border:1px solid var(--line)}
+.tag.ok{background:color-mix(in srgb,var(--verde) 14%, transparent);color:var(--verde)}
+.tag.wait{background:color-mix(in srgb,var(--giallo) 20%, transparent)}
+.muted{color:var(--ink2);font-size:.8rem}
+.row{display:flex;gap:8px;align-items:center}
+.big{font-size:1.9rem;font-weight:800}
+code{background:color-mix(in srgb,var(--ink) 8%, transparent);padding:2px 7px;border-radius:7px;font-size:.92em}
+#err{color:var(--rosso);font-weight:700;margin-top:8px;min-height:1.2em}
+</style>
+</head>
+<body>
+<div class="eyebrow">FLUENTE · PANNELLO DI CONTROLLO</div>
+<h1>Chi c'è, quanto usa, chi invitare.</h1>
+<p class="muted">Admin only. The key is the <code>ADMIN_KEY</code> secret set on the server.</p>
+
+<div class="card" id="loginBox">
+  <div class="row">
+    <input id="key" type="password" placeholder="admin key" autocomplete="off">
+    <button id="go">Apri →</button>
+  </div>
+  <div id="err"></div>
+</div>
+
+<div id="panel" style="display:none">
+  <div class="row" style="gap:10px">
+    <div class="card" style="flex:1;text-align:center"><div class="big" id="nUsers">–</div><div class="muted">accounts</div></div>
+    <div class="card" style="flex:1;text-align:center"><div class="big" id="nActive">–</div><div class="muted">seen last 7 days</div></div>
+    <div class="card" style="flex:1;text-align:center"><div class="big" id="nCalls">–</div><div class="muted">AI calls today</div></div>
+  </div>
+
+  <div class="eyebrow">👥 UTENTI — who's signed up & when they were last seen</div>
+  <div class="card"><table id="usersT"><thead><tr><th>username</th><th>joined</th><th>last seen</th><th>invite</th><th></th></tr></thead><tbody></tbody></table>
+  <p class="muted" style="margin:8px 0 0">"Last seen" updates on every sign-in and cloud sync. Accounts created before v7.1 show "—" until their next sign-in. <b>PIN</b> resets a forgotten PIN — same username, progress untouched.</p></div>
+
+  <div class="eyebrow">⚡ AI CALLS TODAY — the upgrade-the-server signal</div>
+  <div class="card"><table id="aiT"><thead><tr><th>who</th><th>calls</th></tr></thead><tbody></tbody></table>
+  <p class="muted" style="margin:8px 0 0">In-memory counters since the last server restart (free tiers restart often, so treat as a floor, not an exact total). <span id="caps"></span></p></div>
+
+  <div class="eyebrow">🎟 CODICI INVITO — one code, one account, used once</div>
+  <div class="card">
+    <div class="row">
+      <input id="note" placeholder="note — e.g. the person's email you'll send it to">
+      <button id="gen">+ Genera</button>
+    </div>
+    <p class="muted" style="margin:8px 0 0">The app does <b>not</b> send email — generate the code, then email it yourself. Signup consumes it forever.</p>
+    <table id="invT" style="margin-top:8px"><thead><tr><th>code</th><th>note</th><th>status</th><th></th></tr></thead><tbody></tbody></table>
+  </div>
+  <button class="ghost" id="refresh">↻ Aggiorna</button>
+  <button class="ghost" id="lock">Esci</button>
+</div>
+
+<script>
+const $=s=>document.querySelector(s);
+let KEY = localStorage.getItem('fluente-admin-key')||'';
+const ago=t=>{ t=+t; if(!t) return '—'; const m=(Date.now()-t)/60000;
+  if(m<1) return 'adesso'; if(m<60) return Math.round(m)+' min fa';
+  if(m<60*24) return Math.round(m/60)+' h fa'; return Math.round(m/1440)+' gg fa'; };
+const day=t=> +t ? new Date(+t).toLocaleDateString('it-IT',{day:'numeric',month:'short',year:'2-digit'}) : '—';
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+async function api(path, opts){
+  const r=await fetch(path, Object.assign({headers:Object.assign({'x-admin-key':KEY,'Content-Type':'application/json'},(opts||{}).headers||{})},opts||{}));
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error((d.error&&d.error.message)||('HTTP '+r.status));
+  return d;
+}
+
+async function load(){
+  const d=await api('/api/admin/overview');
+  $('#loginBox').style.display='none'; $('#panel').style.display='block';
+  localStorage.setItem('fluente-admin-key',KEY);
+  const week=Date.now()-7*86400000;
+  $('#nUsers').textContent=d.users.length;
+  $('#nActive').textContent=d.users.filter(u=>+u.last_seen>week).length;
+  $('#nCalls').textContent=d.aiToday.reduce((n,x)=>n+x.n,0);
+  $('#caps').textContent='Limits: '+d.rateLimitPerMin+'/min'+(d.dailyCap?(', '+d.dailyCap+'/day per account'):', no daily cap set');
+  $('#usersT tbody').innerHTML=d.users.map(u=>`<tr><td><b>${esc(u.username)}</b></td><td>${day(u.created_at)}</td><td>${ago(u.last_seen)}</td><td>${esc(u.invite_code||'—')}</td><td><button class="sm ghost" data-rp="${esc(u.username)}">PIN</button></td></tr>`).join('')||'<tr><td colspan="5" class="muted">No accounts yet.</td></tr>';
+  $('#aiT tbody').innerHTML=d.aiToday.map(x=>`<tr><td>${esc(x.key.replace(/^u:/,'👤 ').replace(/^ip:/,'🌐 '))}</td><td>${x.n}</td></tr>`).join('')||'<tr><td colspan="2" class="muted">No AI calls yet today (or the server just restarted).</td></tr>';
+  $('#invT tbody').innerHTML=d.invites.map(i=>`<tr>
+    <td><code>${esc(i.code)}</code> <button class="sm ghost" data-copy="${esc(i.code)}">copia</button></td>
+    <td>${esc(i.note||'')}</td>
+    <td>${i.used_by?`<span class="tag ok">used · ${esc(i.used_by)}</span>`:`<span class="tag wait">unused</span>`}</td>
+    <td>${i.used_by?'':`<button class="sm ghost" data-del="${esc(i.code)}">✕</button>`}</td></tr>`).join('')||'<tr><td colspan="4" class="muted">No codes yet — generate one above.</td></tr>';
+  document.querySelectorAll('[data-copy]').forEach(b=>b.onclick=()=>{navigator.clipboard&&navigator.clipboard.writeText(b.dataset.copy);b.textContent='✓';});
+  document.querySelectorAll('[data-rp]').forEach(b=>b.onclick=()=>{
+    const un=b.dataset.rp, td=b.parentElement;
+    td.innerHTML=`<span class="row" style="gap:4px"><input id="rpIn" type="password" placeholder="new PIN" style="width:92px;padding:5px 8px"><button class="sm" id="rpGo">✓</button></span><div class="muted" id="rpMsg" style="font-size:.7rem"></div>`;
+    td.querySelector('#rpGo').onclick=async()=>{
+      const pin=td.querySelector('#rpIn').value;
+      if(pin.length<4){ td.querySelector('#rpMsg').textContent='4+ characters'; return; }
+      try{ await api('/api/admin/reset-pin',{method:'POST',body:JSON.stringify({username:un,pin})});
+        td.innerHTML='<span class="tag ok">PIN reset ✓</span>';
+        setTimeout(load, 1200);
+      }catch(e){ td.querySelector('#rpMsg').textContent=e.message; }
+    };
+  });
+  document.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{ if(confirm('Revoke unused code '+b.dataset.del+'?')){ await api('/api/admin/invite/'+encodeURIComponent(b.dataset.del),{method:'DELETE'}); load(); }});
+}
+$('#go').onclick=async()=>{ KEY=$('#key').value.trim(); $('#err').textContent='';
+  try{ await load(); }catch(e){ $('#err').textContent=e.message; } };
+$('#gen').onclick=async()=>{ try{ const d=await api('/api/admin/invite',{method:'POST',body:JSON.stringify({note:$('#note').value.trim()})}); $('#note').value=''; await load(); alert('Nuovo codice: '+d.code+'\n\nCopy it from the table and email it to them.'); }catch(e){ alert(e.message); } };
+$('#refresh').onclick=()=>load().catch(e=>alert(e.message));
+$('#lock').onclick=()=>{ localStorage.removeItem('fluente-admin-key'); location.reload(); };
+if(KEY){ load().catch(()=>{ $('#loginBox').style.display='block'; }); }
+</script>
+</body>
+</html>

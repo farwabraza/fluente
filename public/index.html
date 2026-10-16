@@ -1792,25 +1792,30 @@ function renderLogin(){
   <div class="onb-hero fadein">
     <div class="eyebrow r">UN BIGLIETTO, TUTTI I DISPOSITIVI</div>
     <div class="big">Sign in once.<br>Your progress <em>follows you</em>.</div>
-    <p class="muted" style="margin-top:12px">Pick any username + a PIN you'll remember. First sign-in creates the account; same details on your phone, laptop, anywhere — same streak, same deck, same level.</p>
+    <p class="muted" style="margin-top:12px">Signing in uses your username + PIN. Creating a <b>new</b> account also needs the one-time invite code from your email — each code works exactly once.</p>
   </div>
   <div class="card">
-    <input class="ti" id="lgUser" placeholder="username (e.g. farwa)" autocapitalize="off" autocomplete="username" style="margin-bottom:10px">
-    <input class="ti" id="lgPin" placeholder="PIN (4+ characters)" type="password" autocomplete="current-password">
+    <input class="ti" id="lgUser" placeholder="username" autocapitalize="off" autocomplete="username" style="margin-bottom:10px">
+    <input class="ti" id="lgPin" placeholder="PIN (4+ characters)" type="password" autocomplete="current-password" style="margin-bottom:10px">
+    <input class="ti" id="lgInvite" placeholder="invite code — new accounts only (FLU-XXXX-XXXX)" autocapitalize="characters" autocomplete="off">
     <button class="btn primary block" id="lgGo" style="margin-top:12px">Sign in / Create account →</button>
     <div id="lgErr" style="color:var(--rosso);font-weight:700;font-size:.85rem;margin-top:8px"></div>
   </div>
   <button class="btn sm block" id="lgSkip" style="background:var(--carta2)">Skip — keep progress on this device only</button>
   <p class="muted" style="font-size:.74rem;margin-top:10px;text-align:center">Use a throwaway PIN, not a password you use elsewhere.</p>`;
   $('#lgGo').onclick=async()=>{
-    const username=$('#lgUser').value.trim(), pin=$('#lgPin').value;
+    const username=$('#lgUser').value.trim(), pin=$('#lgPin').value, invite=$('#lgInvite').value.trim();
     if(!/^[a-z0-9_.-]{3,24}$/i.test(username)){ $('#lgErr').textContent='Username: 3–24 letters/numbers.'; return; }
     if(pin.length<4){ $('#lgErr').textContent='PIN needs at least 4 characters.'; return; }
     $('#lgGo').innerHTML='<span class="spinner"></span>'; $('#lgGo').disabled=true;
     try{
-      const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,pin})});
+      const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,pin,invite})});
       const d=await r.json();
-      if(!d.ok){ $('#lgErr').textContent=(d.error&&d.error.message)||'Sign-in failed.'; $('#lgGo').disabled=false; $('#lgGo').textContent='Sign in / Create account →'; return; }
+      if(!d.ok){
+        $('#lgErr').textContent=(d.error&&d.error.message)||'Sign-in failed.';
+        if(d.needInvite){ $('#lgInvite').style.borderColor='var(--rosso)'; $('#lgInvite').focus(); }
+        $('#lgGo').disabled=false; $('#lgGo').textContent='Sign in / Create account →'; return;
+      }
       CREDS={username,pin}; localStorage.setItem('fluente-creds',JSON.stringify(CREDS));
       syncStatus='cloud';
       if(d.state && (+d.updatedAt||0) >= (S._ts||0)){ S=Object.assign({},DEFAULT_STATE,d.state); localStorage.setItem('fluente-state',JSON.stringify(S)); }
