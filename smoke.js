@@ -40,6 +40,11 @@ const results = [];
 const T = async (name, fn) => { try { await fn(); results.push("✓ "+name); } catch(e){ results.push("✗ "+name+" — "+e.message); } };
 
 setTimeout(async () => {
+  // lessons.js loads via <script src> in the browser; JSDOM has no resource
+  // loader configured, so inject the static content layer directly.
+  // (const→var: eval'd const stays in the eval's own scope and would be
+  // invisible to the page's functions; var lands on the global object.)
+  w.eval(fs.readFileSync("public/lessons.js", "utf8").replace(/^const /gm, "var "));
   const S = w.eval("S");
 
   await T("boots to Oggi with gap map + esame rows", () => {
@@ -539,6 +544,134 @@ setTimeout(async () => {
     if (!html.includes("never explain by naming tenses")) throw new Error("tutor prompt instruction missing");
     if (!html.includes('"bridge":[{"en"')) throw new Error("lesson bridge JSON field missing");
   });
+
+  // ---- v7: static content layer ----
+  await T("LESSON_BOOK covers every lesson station + Linea M, full integrity", () => {
+    const missing = w.eval(`Object.values(CURRICULUM).flat().filter(u=>!u.exam && !LESSON_BOOK[u.id]).map(u=>u.id).join(',')`);
+    if (missing) throw new Error("no lesson for: " + missing);
+    const missingMed = w.eval(`MED_UNITS.filter(u=>!LESSON_BOOK[u.id]).map(u=>u.id).join(',')`);
+    if (missingMed) throw new Error("no lesson for med: " + missingMed);
+    const bad = w.eval(`Object.entries(LESSON_BOOK).filter(([id,l]) =>
+      !l.title || !Array.isArray(l.bullets)||l.bullets.length<3 ||
+      !Array.isArray(l.ex)||l.ex.length<2||l.ex.some(e=>e.length!==2) ||
+      !Array.isArray(l.bridge)||l.bridge.length<2||l.bridge.some(b=>b.length!==2) ||
+      !l.note || !l.mn ||
+      !Array.isArray(l.drills)||l.drills.length<10||l.drills.some(d=>!d.q||!Array.isArray(d.o)||d.o.length<2||!d.w) ||
+      !Array.isArray(l.speak)||l.speak.length<2||l.speak.some(s=>s.length!==2) ||
+      !Array.isArray(l.cards)||l.cards.length<2||l.cards.some(c=>c.length!==4)
+    ).map(([id])=>id).join(',')`);
+    if (bad) throw new Error("malformed: " + bad);
+  });
+
+  await T("samplePool avoids repeats until exhausted, then resets; dealDrill keeps the answer", () => {
+    w.eval("S.drillSeen = {}");
+    const a = w.eval(`samplePool('t-pool', GRAMMAR_DRILLS.presente, 5).map(d=>d.s).join('|')`);
+    const b = w.eval(`samplePool('t-pool', GRAMMAR_DRILLS.presente, 5).map(d=>d.s).join('|')`);
+    const overlap = a.split("|").filter(x => b.split("|").includes(x));
+    // pool has 6: first draw takes 5, second must reset — overlap allowed, but a draw itself must be unique
+    if (new Set(a.split("|")).size !== 5) throw new Error("repeat within one draw");
+    for (let k = 0; k < 20; k++) {
+      const ok = w.eval(`(function(){const d=dealDrill({q:'x',o:['RIGHT','wrong'],w:'w'}); return d.o[d.a]==='RIGHT';})()`);
+      if (!ok) throw new Error("dealDrill lost the correct answer");
+    }
+  });
+
+  await T("openLesson is instant from LESSON_BOOK — zero /api/chat calls, full flow to finish", () => {
+    let chat = 0;
+    const orig = w.fetch;
+    w.fetch = async (url, o) => { if (String(url).includes("/api/chat")) chat++; return orig(url, o); };
+    w.eval("delete S.unitsDone.a1u2; S.deck = S.deck.filter(c=>!String(c.id).startsWith('a1u2-'));");
+    w.eval(`openLesson(CURRICULUM.A1.find(u=>u.id==='a1u2'),'A1')`);
+    const t = w.document.body.textContent;
+    for (const sec of ["IL CONCETTO", "IL PONTE", "MNEMONIC HOOK", "LA NOTA"]) if (!t.includes(sec)) throw new Error(sec + " missing");
+    if (!w.document.querySelector("#persBtn")) throw new Error("personal-example button missing");
+    w.document.querySelector("#startDrills").click();
+    for (let i = 0; i < 5; i++) {
+      const opts = [...w.document.querySelectorAll(".sheet .qopt")];
+      if (!opts.length) throw new Error("no drill options at round " + i);
+      opts[0].click();
+      w.document.querySelector("#nextD").click();
+    }
+    if (!w.document.body.textContent.includes("SPEAK IT")) throw new Error("speak view missing");
+    w.document.querySelector("#skipSpeak").click();
+    w.document.querySelector("#finishL").click();
+    if (!S.unitsDone.a1u2) throw new Error("unit not marked done");
+    if (!S.deck.find(c => c.id === "a1u2-0")) throw new Error("lesson cards not added");
+    const n0 = S.deck.length;
+    w.eval(`openLesson(CURRICULUM.A1.find(u=>u.id==='a1u2'),'A1')`);
+    w.document.querySelector("#startDrills").click();
+    for (let i = 0; i < 5; i++) { [...w.document.querySelectorAll(".sheet .qopt")][0].click(); w.document.querySelector("#nextD").click(); }
+    w.document.querySelector("#skipSpeak").click();
+    w.document.querySelector("#finishL").click();
+    if (S.deck.length !== n0) throw new Error("replay duplicated cards");
+    w.fetch = orig;
+    if (chat !== 0) throw new Error("made " + chat + " AI calls for a static lesson");
+  });
+
+  await T("checkpoint questions come from the static pool — no AI call to start", async () => {
+    let chat = 0;
+    const orig = w.fetch;
+    w.fetch = async (url, o) => { if (String(url).includes("/api/chat")) chat++; return orig(url, o); };
+    w.eval(`openCheckpoint(CURRICULUM.A1.find(u=>u.exam),'A1')`);
+    w.document.querySelector("#startEx").click();
+    await new Promise(r => setTimeout(r, 30));
+    if (!w.document.body.textContent.includes("DOMANDA 1 / 3")) throw new Error("question not shown");
+    if (!w.eval(`CHECKPOINT_POOL.A1.some(q=>document.querySelector('.sheet .card h2').textContent.includes(q))`)) throw new Error("question not from pool");
+    w.fetch = orig;
+    if (chat !== 0) throw new Error("AI called to generate questions");
+    w.eval("closeSheet()");
+  });
+
+  await T("GRAMMAR_DRILLS covers all 26 rules; rule drill runs static with fresh-AI offer", () => {
+    const missing = w.eval(`GRAMMAR_BOOK.filter(g=>!GRAMMAR_DRILLS[g.id]||GRAMMAR_DRILLS[g.id].length<6).map(g=>g.id).join(',')`);
+    if (missing) throw new Error("thin banks: " + missing);
+    const bad = w.eval(`Object.values(GRAMMAR_DRILLS).flat().filter(d=>!d.s||!Array.isArray(d.o)||d.o.length!==2||!d.w).length`);
+    if (bad) throw new Error(bad + " malformed rule drills");
+    w.eval(`grammarSheet(GRAMMAR_BOOK.find(g=>g.id==='futuro'))`);
+    w.document.querySelector("#gDrill").click();
+    if (!w.document.body.textContent.includes("FUTURO SEMPLICE · 1/5")) throw new Error("static drill didn't render instantly");
+    for (let i = 0; i < 5; i++) { [...w.document.querySelectorAll(".sheet .qopt")][0].click(); w.document.querySelector("#gN").click(); }
+    if (!w.document.querySelector("#gFresh")) throw new Error("fresh-AI button missing on static result");
+    if (!(S.gramPractice.futuro && S.gramPractice.futuro.drillTs)) throw new Error("drill not recorded");
+    w.eval("closeSheet()");
+  });
+
+  await T("Med tab: Linea M stations + patient-speech drill & browse", () => {
+    w.eval("setTab('med')");
+    if (w.document.querySelectorAll("[data-med]").length !== 6) throw new Error("med stations missing");
+    if (!w.document.body.textContent.includes("COME PARLANO I PAZIENTI")) throw new Error("patient section missing");
+    const badPz = w.eval(`PAZIENTE_BANK.filter(p=>p.length!==4||!p[0]||!p[1]||!p[2]||!p[3]).length`);
+    if (badPz) throw new Error(badPz + " malformed patient phrases");
+    if (w.eval("PAZIENTE_BANK.length") < 24) throw new Error("bank too small");
+    w.eval("pazienteDrill()");
+    if (!w.document.body.textContent.includes("IL PAZIENTE DICE")) throw new Error("drill not rendered");
+    [...w.document.querySelectorAll(".sheet .qopt")][0].click();
+    if (!w.document.querySelector("#pzN")) throw new Error("drill feedback missing");
+    w.eval("closeSheet(); pazienteBrowse();");
+    const add = w.document.querySelector('[data-pzadd="2"]');
+    const n0 = S.deck.length;
+    add.click();
+    if (S.deck.length !== n0 + 1) throw new Error("add failed");
+    add.click();
+    if (S.deck.length !== n0 + 1) throw new Error("duplicate added");
+    w.eval("closeSheet()");
+    // a Linea M station opens as a static lesson
+    w.eval("setTab('med')");
+    w.document.querySelector('[data-med="m1"]').click();
+    if (!w.document.body.textContent.includes("IL CONCETTO")) throw new Error("med lesson didn't open");
+    w.eval("closeSheet()");
+  });
+
+  await T("service worker caches lessons.js; server keys rate limits per account", () => {
+    const sw = fs.readFileSync("public/sw.js", "utf8");
+    if (!sw.includes("/lessons.js")) throw new Error("lessons.js not in SW shell");
+    if (!sw.includes("fluente-v7")) throw new Error("cache not bumped");
+    const srv = fs.readFileSync("server.js", "utf8");
+    if (!srv.includes("function rateKey")) throw new Error("rateKey missing");
+    if (!srv.match(/b\.u ===? "string"|typeof b\.u/)) throw new Error("per-account key not reading body.u");
+    if (!html.includes("u:(CREDS&&CREDS.username)||undefined")) throw new Error("client doesn't send username");
+  });
+
 
   await T("client ai() retries a 429 with backoff and succeeds", async () => {
     let calls = 0;

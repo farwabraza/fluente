@@ -8,6 +8,21 @@ with mnemonics, leech rescue, and production-direction recall.
 
 ---
 
+## What's new in v7 — instant lessons (the static-content rebuild)
+
+The problem: every lesson was a live AI call — 20–90 seconds of spinner, token cost on every tap, quality a dice roll, and three users now sharing the rate limit. The fix: **the entire curriculum is now hand-written and ships inside the app** (`public/lessons.js`), like the grammar rulebook always was. AI spend now goes only where it's irreplaceable: conversation, correction of *your* sentences, and grading.
+
+1. **📚 LESSON_BOOK — all 35 lessons, hand-authored.** Every station of the Linea (29) plus the new Linea M (6) opens **instantly**: concept, English bridges, la nota, mnemonic, and a 10-item drill bank per lesson (350 drills total). Five drills are sampled per run with no-repeat tracking (`samplePool`), options shuffled at render (`dealDrill`), so replays stay fresh with zero API calls — and lessons now **work offline** (service worker caches `lessons.js`). An optional «✨ one example about MY world» button keeps interest-personalization as a tiny opt-in call. The old AI generator survives only as a fallback for units without a book entry.
+2. **🚇 Linea M — the medical track.** Six stations on the Med tab, same lesson format: il triage, l'anamnesi completa, spiegare una diagnosi, il consenso informato, la brutta notizia, consegne & telefonate. Hand-written for ward reality (codici, «va fatto», read-back culture, the warning shot).
+3. **🗣 Come parlano i pazienti.** 26 real colloquial symptom phrases («mi scoppia la testa», «vado di corpo», «ho il fiatone», «la cervicale») with clinical meaning, decode drill, audio, and one-tap add to Ripasso — the gap between textbook Italian and what patients actually say.
+4. **🎓 Static checkpoint pools.** 48 hand-written oral-exam questions (8 per level, 3 sampled per attempt). Grading stays AI — it judges your actual answer.
+5. **📖 Static rule drills.** All 26 grammar rules now have a 6-item hand-written bank — the Regole drill opens instantly; a «🎲 Fresh AI questions» button keeps infinite variety on demand.
+6. **👥 Per-account rate limits.** `/api/chat` is now keyed by username when signed in (per-IP otherwise), so two people on the same WiFi no longer share one budget. The client sends its username automatically.
+
+Cost math: a lesson used to cost ~3k tokens per tap, per user. It now costs **zero** — the AI budget is reserved for the booth, Scrivi, Crea, exams and the coach. (64 automated checks.)
+
+---
+
 ## What's new in v6.8 — 🔥 Modalità Brutale (opt-in roast mode)
 
 Inspired by apps where the AI roasts your mistakes so hard you never make them again. Off by default; one tap on the **Modalità brutale** row (on Oggi or in Regole) arms it everywhere:
@@ -189,12 +204,15 @@ Postgres you control) and a terms line; if selling to EU consumers, note GDPR ba
 | Piece | File |
 |---|---|
 | App (all of it) | `public/index.html` |
+| The hand-written curriculum: lessons, drill banks, checkpoint pools, patient phrases | `public/lessons.js` |
 | AI proxy + rate limits + accounts | `server.js` |
 | PWA install/offline | `public/manifest.json`, `public/sw.js` |
 | Headless test suite (43 checks, dev-only) | `smoke.js` — `npm i jsdom --no-save && node smoke.js` |
 
 ## 6 · Tinkering map (everything is in index.html)
 
+- `LESSON_BOOK` (in `lessons.js`) — all 35 lessons incl. Linea M: edit a drill, add a bullet, it ships instantly
+- `CHECKPOINT_POOL`, `GRAMMAR_DRILLS`, `PAZIENTE_BANK` (in `lessons.js`) — exam questions, per-rule drills, patient phrases
 - `GRAMMAR_BOOK` — the 26-rule grammar rulebook (hand-written; edit freely — each rule: `note` one-liner, `bridge` English parallels, when/how/why/trap/examples)
 - `CHICCA_BANK` — the 46 daily colloquial phrases & facts (hand-written; add your own)
 - `ROAST_BANK` / `ROAST_PRAISE` — the Modalità Brutale insult & grudging-praise lines (hand-written; make them meaner)

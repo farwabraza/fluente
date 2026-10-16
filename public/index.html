@@ -299,6 +299,7 @@ button:focus-visible,.chip:focus-visible,.qopt:focus-visible{outline:3px solid v
 </div>
 <div id="overlay"></div>
 
+<script src="lessons.js"></script>
 <script>
 /* =========================================================
    FLUENTE — Italian to native level. ADHD-first architecture:
@@ -313,7 +314,7 @@ const DEFAULT_STATE = {
   deck:null, parlaTurns:0, writeDone:{}, xpLog:{},
   errLog:{}, examLog:[], freqSeen:{},
   coachPlan:null, nativeLang:'', accent7:null, protocol:null,
-  gramPractice:{}, chiccaLog:{}, brutale:false
+  gramPractice:{}, chiccaLog:{}, brutale:false, drillSeen:{}
 };
 let S = JSON.parse(JSON.stringify(DEFAULT_STATE));
 let storageOK = true;
@@ -343,6 +344,7 @@ async function loadState(){
   if(!S.freqSeen) S.freqSeen = {};
   if(!S.gramPractice) S.gramPractice = {};
   if(!S.chiccaLog) S.chiccaLog = {};
+  if(!S.drillSeen) S.drillSeen = {};
   S.deck.forEach(c=>{ if(c.lapses==null) c.lapses=0; });
 }
 async function save(){
@@ -369,7 +371,7 @@ async function ai(messages, system, expectJSON=false, maxTokens=1000){
       const timer = setTimeout(()=>ctrl.abort(), 90000); // free-tier servers can be slow to wake — don't hang forever
       const res = await fetch("/api/chat",{
         method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({messages, system, max_tokens:maxTokens}),
+        body: JSON.stringify({messages, system, max_tokens:maxTokens, u:(CREDS&&CREDS.username)||undefined}),
         signal: ctrl.signal
       });
       clearTimeout(timer);
@@ -1119,10 +1121,42 @@ function renderLinea(){
   });
 }
 
-/* ----- Micro-lesson: concept → mnemonic → 5 drills → speak ----- */
-async function openLesson(unit, lv){
+/* ----- Static-content machinery: sample without repeats, shuffle options ----- */
+/* Pools store the correct answer FIRST (o[0]); dealDrill shuffles for display. */
+function samplePool(key, pool, n){
+  let seen = (S.drillSeen && S.drillSeen[key]) || [];
+  if(pool.length - seen.length < n) seen = []; // pool exhausted → start a fresh cycle
+  const avail = pool.map((_,i)=>i).filter(i=>!seen.includes(i));
+  const picks=[];
+  while(picks.length<n && avail.length) picks.push(avail.splice(Math.floor(Math.random()*avail.length),1)[0]);
+  S.drillSeen[key] = seen.concat(picks); save();
+  return picks.map(i=>pool[i]);
+}
+function dealDrill(d){
+  const idx = d.o.map((_,i)=>i).sort(()=>Math.random()-0.5);
+  return { q:d.q||d.s, o:idx.map(i=>d.o[i]), a:idx.indexOf(0), w:d.w };
+}
+
+/* ----- Micro-lesson: instant from LESSON_BOOK; AI only as fallback ----- */
+function openLesson(unit, lv){
+  const L = (typeof LESSON_BOOK!=='undefined') && LESSON_BOOK[unit.id];
+  if(!L) return openLessonAI(unit, lv);
+  const sp = L.speak[Math.floor(Math.random()*L.speak.length)];
+  const lesson = {
+    concept:{ title:L.title, bullets:L.bullets, examples:L.ex.map(e=>({it:e[0],en:e[1]})) },
+    bridge:L.bridge.map(p=>({en:p[0],it:p[1]})),
+    mnemonic:L.mn, note:L.note,
+    drills:samplePool('u-'+unit.id, L.drills, 5).map(dealDrill),
+    speak:{prompt:sp[0], model:sp[1]},
+    newcards:L.cards.map(c=>({it:c[0],en:c[1],mn:c[2],ex:c[3]}))
+  };
+  showSheet(`<div class="eyebrow r">${lv} · ${esc(unit.t)}</div>`,'');
+  runLesson(unit, lv, lesson, true);
+}
+
+async function openLessonAI(unit, lv){
   showSheet(`<div class="eyebrow r">${lv} · ${esc(unit.t)}</div>`,`<div style="text-align:center;padding:40px 0"><span class="spinner"></span><p class="muted" style="margin-top:10px">Building your lesson…</p></div>`);
-  const lesson = await ai([{role:'user',content:`Create a 5-minute Italian micro-lesson. Level: ${lv}. Topic: "${unit.t}" (${unit.d}). Learner interests: ${S.interests.join(', ')||'everyday life in Italy'}. They love mnemonics and need tiny, punchy sessions.
+  const raw = await ai([{role:'user',content:`Create a 5-minute Italian micro-lesson. Level: ${lv}. Topic: "${unit.t}" (${unit.d}). Learner interests: ${S.interests.join(', ')||'everyday life in Italy'}. They love mnemonics and need tiny, punchy sessions.
 IMPORTANT — how to explain: the learner is a native English speaker who speaks decent Italian but does NOT remember grammar terminology in either language. NEVER rely on labels like "past perfect" or "subjunctive" alone — every time a grammar idea appears, anchor it to the English construction shown in quotes (e.g. «avevo fatto» = the English "I had done" move; congiuntivo = the mood in "if I WERE you"). Teach the principle in plain words; assume zero jargon, full intelligence. ADHD format: one idea per bullet, short punchy lines.
 Respond ONLY with JSON:
 {"concept":{"title":"...","bullets":["3-4 punchy bullets explaining the core idea in plain English (no terminology — quoted English equivalents instead)","..."],"examples":[{"it":"Italian example","en":"translation"},{"it":"...","en":"..."}],"bridge":[{"en":"an English sentence that uses the SAME construction","it":"its Italian equivalent"},{"en":"...","it":"..."}]},
@@ -1131,7 +1165,13 @@ Respond ONLY with JSON:
 "drills":[{"q":"question (can include ___ gaps)","options":["4 options"],"answer":0,"why":"8-word explanation, plain English, no terminology"} x5 — calibrate difficulty to ${lv}],
 "speak":{"prompt":"a single sentence the learner must say aloud in Italian, using today's grammar","model":"the model Italian sentence"},
 "newcards":[{"it":"word/phrase from this lesson","en":"meaning","mn":"mnemonic","ex":"example sentence"} x2]}`}],'You are a brilliant Italian curriculum designer. JSON only, no markdown fences. Drills must genuinely test the concept. Explain grammar by English parallel, never by terminology.',true,3200);
-  if(!lesson){ sheetBody(`<div class="card">⚠ Couldn't build the lesson — check connection and tap the station again.</div>`); return; }
+  if(!raw){ sheetBody(`<div class="card">⚠ Couldn't build the lesson — check connection and tap the station again.</div>`); return; }
+  raw.drills = (raw.drills||[]).map(d=>({q:d.q, o:d.options, a:d.answer, w:d.why}));
+  raw.bridge = (raw.concept && raw.concept.bridge) || [];
+  runLesson(unit, lv, raw, false);
+}
+
+function runLesson(unit, lv, lesson, isStatic){
   let di=0, correct=0;
   function drillView(){
     if(di>=lesson.drills.length) return speakView();
@@ -1139,14 +1179,14 @@ Respond ONLY with JSON:
     sheetBody(`
       <div class="eyebrow b">DRILL ${di+1} / ${lesson.drills.length}</div>
       <div class="card"><h2>${esc(D.q)}</h2></div>
-      ${D.options.map((o,k)=>`<button class="qopt" data-k="${k}">${esc(o)}</button>`).join('')}
+      ${D.o.map((o,k)=>`<button class="qopt" data-k="${k}">${esc(o)}</button>`).join('')}
       <div id="drillFb"></div>`);
     document.querySelectorAll('.sheet .qopt').forEach(b=>b.onclick=()=>{
       const k=+b.dataset.k;
       document.querySelectorAll('.sheet .qopt').forEach(x=>x.disabled=true);
-      if(k===D.answer){ b.classList.add('right'); correct++; }
-      else{ b.classList.add('wrong'); document.querySelectorAll('.sheet .qopt')[D.answer].classList.add('right'); }
-      $('#drillFb').innerHTML=`<div class="mnemo fadein" style="margin-top:10px">${roastFb(k===D.answer)}<b>${k===D.answer?'✓ Esatto!':'✗'} </b>${esc(D.why)}</div><button class="btn dark block" id="nextD">Next →</button>`;
+      if(k===D.a){ b.classList.add('right'); correct++; }
+      else{ b.classList.add('wrong'); document.querySelectorAll('.sheet .qopt')[D.a].classList.add('right'); }
+      $('#drillFb').innerHTML=`<div class="mnemo fadein" style="margin-top:10px">${roastFb(k===D.a)}<b>${k===D.a?'✓ Esatto!':'✗'} </b>${esc(D.w)}</div><button class="btn dark block" id="nextD">Next →</button>`;
       $('#nextD').onclick=()=>{di++;drillView();};
     });
   }
@@ -1176,8 +1216,10 @@ Respond ONLY with JSON:
       $('#speakFb').after(btn);
       btn.onclick=()=>{
         S.unitsDone[unit.id]=true; S.missions.lesson=true; touchStreak(); gainXP(30);
-        (lesson.newcards||[]).forEach((c,i)=>S.deck.push({id:unit.id+'-'+i, it:c.it,en:c.en,mn:c.mn,ex:c.ex,due:Date.now(),ivl:0,ease:2.5}));
-        save(); closeSheet(); toast('Station complete! New words added to Ripasso ⚡'); renderLinea();
+        (lesson.newcards||[]).forEach((c,i)=>{ const id=unit.id+'-'+i;
+          if(!S.deck.find(x=>x.id===id)) S.deck.push({id, it:c.it,en:c.en,mn:c.mn,ex:c.ex,due:Date.now(),ivl:0,ease:2.5,lapses:0}); });
+        save(); closeSheet(); toast('Station complete! New words added to Ripasso ⚡');
+        (unit.id.length===2&&unit.id[0]==='m') ? renderMed() : renderLinea();
       };
     }
   }
@@ -1188,16 +1230,24 @@ Respond ONLY with JSON:
       <ul style="padding-left:18px;margin-top:6px">${lesson.concept.bullets.map(b=>`<li style="margin-bottom:4px;font-size:.92rem">${esc(b)}</li>`).join('')}</ul>
       ${lesson.concept.examples.map(e=>`<div class="ex"><b>${esc(e.it)}</b> <button class="spk" onclick="speak('${esc(e.it).replace(/'/g,"\\'")}')" style="color:var(--giallo);background:none;border:none;cursor:pointer">🔊</button><br><span style="opacity:.8">${esc(e.en)}</span></div>`).join('')}
     </div>
-    ${(lesson.concept.bridge&&lesson.concept.bridge.length)?`
+    ${(lesson.bridge&&lesson.bridge.length)?`
     <div class="eyebrow" style="color:var(--verde)">🌉 IL PONTE · you already say this in English</div>
-    ${lesson.concept.bridge.map(p=>`<div class="ponte">
+    ${lesson.bridge.map(p=>`<div class="ponte">
       <span class="pen">🇬🇧 ${esc(p.en)}</span>
       <span class="pit">🇮🇹 ${esc(p.it)} <button class="spk" onclick="speak('${esc(p.it).replace(/'/g,"\\'")}')" style="background:none;border:none;cursor:pointer">🔊</button></span>
     </div>`).join('')}`:''}
     <div class="mnemo"><div class="eyebrow">🧠 MNEMONIC HOOK</div>${esc(lesson.mnemonic)}</div>
     ${lesson.note?`<div class="nota"><div class="eyebrow">📝 LA NOTA · the one-liner for your notebook</div><b style="font-size:.92rem">${esc(lesson.note)}</b></div>`:''}
+    ${isStatic?`<div id="persBox"><button class="btn sm block" id="persBtn" style="background:var(--carta2)">✨ One extra example about MY world (${esc(S.interests.join(', ')||'your interests')})</button></div>`:''}
     <button class="btn primary block" id="startDrills">Drill it → (5 quick ones)</button>`);
   $('#startDrills').onclick=drillView;
+  const pb=$('#persBtn');
+  if(pb) pb.onclick=async()=>{
+    pb.innerHTML='<span class="spinner"></span>'; pb.disabled=true;
+    const ex=await ai([{role:'user',content:`Italian lesson topic: "${lesson.concept.title}" (${lesson.note||unit.d}). Learner level ${S.level}, interests: ${S.interests.join(', ')||'everyday life'}. Write ONE example sentence using this topic's grammar, themed on their interests. Respond ONLY with JSON: {"it":"the sentence","en":"translation"}`}],'JSON only.',true,300);
+    if(ex&&ex.it){ $('#persBox').innerHTML=`<div class="card flat" style="margin-bottom:10px;padding:10px 14px;border-left:5px solid var(--verde)"><b style="font-size:.9rem">${esc(ex.it)}</b> <button class="btn sm" id="persSay" style="box-shadow:none;padding:2px 8px">🔊</button><div class="muted" style="font-size:.8rem">${esc(ex.en)}</div></div>`; $('#persSay').onclick=()=>speak(ex.it); }
+    else { pb.disabled=false; pb.textContent='✨ Retry — connection hiccup'; }
+  };
 }
 function similar(a,b){
   const n=s=>s.toLowerCase().replace(/[^a-zàèéìòù ]/g,'').split(/\s+/).filter(Boolean);
@@ -1212,13 +1262,19 @@ async function openCheckpoint(unit,lv){
     <p class="muted">An AI examiner grades structure, vocabulary, and whether you'd survive this level in the wild. Pass = next zone unlocks.</p></div>
     <button class="btn primary block" id="startEx">Begin esame →</button>`);
   $('#startEx').onclick=async()=>{
-    sheetBody(`<div style="text-align:center;padding:40px 0"><span class="spinner"></span><p class="muted" style="margin-top:8px">The examiner is preparing…</p></div>`);
-    const qs = await ai([{role:'user',content:`Generate 3 oral exam questions for CEFR ${lv} Italian (themes from this level: ${CURRICULUM[lv].map(u=>u.t).join(', ')}). Make 1 question themed on the learner's interests (${S.interests.join(', ')||'everyday life'}) if level is A2+. Respond ONLY with JSON: {"questions":["q1 in Italian","q2","q3"]}`}],'JSON only.',true);
-    if(!qs||!qs.questions){ sheetBody('<div class="card">⚠ Connection issue — reopen the checkpoint.</div>'); return; }
+    let questions;
+    const pool = (typeof CHECKPOINT_POOL!=='undefined') && CHECKPOINT_POOL[lv];
+    if(pool){ questions = samplePool('ck-'+lv, pool, 3); }
+    else {
+      sheetBody(`<div style="text-align:center;padding:40px 0"><span class="spinner"></span><p class="muted" style="margin-top:8px">The examiner is preparing…</p></div>`);
+      const qs = await ai([{role:'user',content:`Generate 3 oral exam questions for CEFR ${lv} Italian (themes from this level: ${CURRICULUM[lv].map(u=>u.t).join(', ')}). Respond ONLY with JSON: {"questions":["q1 in Italian","q2","q3"]}`}],'JSON only.',true);
+      if(!qs||!qs.questions){ sheetBody('<div class="card">⚠ Connection issue — reopen the checkpoint.</div>'); return; }
+      questions = qs.questions;
+    }
     let qi=0; const answers=[];
     function ask(){
       if(qi>=3) return grade();
-      const q=qs.questions[qi];
+      const q=questions[qi];
       sheetBody(`
         <div class="eyebrow b">DOMANDA ${qi+1} / 3</div>
         <div class="card"><h2>${esc(q)} <button class="spk" onclick="speak('${esc(q).replace(/'/g,"\\'")}')" style="background:none;border:none;cursor:pointer">🔊</button></h2></div>
@@ -1439,13 +1495,40 @@ async function userTurn(text){
 /* =========================================================
    MEDICINA — corsia survival kit
 ========================================================= */
+/* Linea M — the medical lesson track (static lessons in LESSON_BOOK) */
+const MED_UNITS = [
+ {id:'m1',t:'Il triage',d:'Pronto soccorso · the first 90 seconds · codici'},
+ {id:'m2',t:"L'anamnesi completa",d:'The full history, layer by layer'},
+ {id:'m3',t:'Spiegare una diagnosi',d:'Plain Italian for real people · dosaggi'},
+ {id:'m4',t:'Il consenso informato',d:'Rights, risks & the four boxes'},
+ {id:'m5',t:'La brutta notizia',d:'Warning shot · clarity · silence · presence'},
+ {id:'m6',t:'Consegne & telefonate',d:'Handover, SBAR, read-back'}
+];
+
 function renderMed(){
   main.innerHTML = `
   <div class="fadein">
     <div class="med-hero"><span class="cross">✚</span>
       <div class="eyebrow" style="color:#bfe3d0">MEDICINA · ITALIANO DI CORSIA</div>
       <h1>Sound like a doctor,<br>not a tourist with a stethoscope.</h1>
-      <p style="font-size:.86rem;margin-top:8px;opacity:.92">Everything here feeds your clerkships: anamnesi scripts, ward vocabulary with mnemonic hooks, and a patient-presentation simulator.</p>
+      <p style="font-size:.86rem;margin-top:8px;opacity:.92">Everything here feeds your clerkships: the Linea M lessons, patient-speech decoding, anamnesi scripts, ward vocabulary, and a presentation simulator.</p>
+    </div>
+
+    <div class="eyebrow g" style="margin-top:4px">🚇 LINEA M · THE MEDICAL TRACK</div>
+    <p class="muted" style="font-size:.78rem;margin-bottom:8px">Six stations from triage to handover — instant, hand-written, drillable. Same format as the Linea.</p>
+    ${MED_UNITS.map(u=>`<button class="mission ${S.unitsDone[u.id]?'done':''}" data-med="${u.id}">
+      <span class="chk">${S.unitsDone[u.id]?'✓':''}</span>
+      <span><b>${esc(u.t)}</b><br><span class="muted" style="font-size:.76rem">${esc(u.d)}</span></span>
+      <span class="st-go" style="margin-left:auto">${S.unitsDone[u.id]?'REVIEW':'GO →'}</span>
+    </button>`).join('')}
+
+    <div class="card" style="border-left:8px solid var(--rosso);margin-top:12px">
+      <div class="eyebrow r">🗣 COME PARLANO I PAZIENTI</div>
+      <p class="muted" style="margin-bottom:8px">Patients don't say «cefalea» — they say «mi scoppia la testa». ${PAZIENTE_BANK.length} real phrases, colloquial → clinical. The gap between textbook Italian and ward Italian lives here.</p>
+      <div class="row">
+        <button class="btn primary" id="pzDrill" style="flex:1">🎯 Decode drill<br><span style="font-size:.64rem;font-weight:400">6 phrases — what do they mean?</span></button>
+        <button class="btn dark" id="pzBrowse" style="flex:1">📖 Browse all<br><span style="font-size:.64rem;font-weight:400">with audio + add to Ripasso</span></button>
+      </div>
     </div>
 
     <div class="card">
@@ -1471,6 +1554,9 @@ function renderMed(){
   </div>`;
   document.querySelectorAll('[data-say]').forEach(b=>b.onclick=()=>speak(b.dataset.say));
   document.querySelectorAll('[data-deck]').forEach(b=>b.onclick=()=>openMedDeck(b.dataset.deck));
+  document.querySelectorAll('[data-med]').forEach(b=>b.onclick=()=>openLesson(MED_UNITS.find(u=>u.id===b.dataset.med),'M'));
+  $('#pzDrill').onclick=pazienteDrill;
+  $('#pzBrowse').onclick=pazienteBrowse;
   $('#anamDrill').onclick=()=>{ startConvo(SCENARIOS.find(s=>s.id==='paziente')); };
   $('#presGo').onclick=async()=>{
     const txt=$('#presTa').value.trim();
@@ -1481,6 +1567,58 @@ function renderMed(){
     gainXP(25); $('#presGo').textContent='✓ Graded · try another'; $('#presGo').disabled=false;
   };
 }
+/* ----- Come parlano i pazienti: decode drill + browse ----- */
+function pazienteDrill(){
+  const items = samplePool('pz', PAZIENTE_BANK, 6);
+  let i=0, correct=0;
+  showSheet('<div class="eyebrow r">🗣 COME PARLANO I PAZIENTI</div>','');
+  function show(){
+    if(i>=items.length){
+      gainXP(20); touchStreak(); save(); if(correct===items.length) celebrate(24);
+      sheetBody(`<div style="text-align:center;padding:20px 0"><div style="font-size:3rem">${correct>=5?'🩺':'📚'}</div><h1>${correct}/${items.length}</h1><p class="muted">+20 XP. Understanding the patient's words IS the diagnosis half the time.</p><button class="btn primary block" id="pzDone" style="margin-top:14px">Close</button></div>`);
+      $('#pzDone').onclick=closeSheet; return;
+    }
+    const p=items[i];
+    const d=dealDrill({q:p[0], o:[p[1],p[2]], w:p[3]});
+    sheetBody(`
+      <div class="eyebrow b">IL PAZIENTE DICE · ${i+1}/${items.length}</div>
+      <div class="card"><h2 style="font-size:1.15rem">«${esc(p[0])}» <button class="btn sm" data-say="${esc(p[0])}" style="box-shadow:none;padding:3px 9px">🔊</button></h2>
+      <p class="muted">What are they telling you?</p></div>
+      ${d.o.map((o,k)=>`<button class="qopt" data-k="${k}">${esc(o)}</button>`).join('')}
+      <div id="pzFb"></div>`);
+    document.querySelectorAll('.sheet [data-say]').forEach(b=>b.onclick=()=>speak(b.dataset.say));
+    document.querySelectorAll('.sheet .qopt').forEach(b=>b.onclick=()=>{
+      const k=+b.dataset.k;
+      document.querySelectorAll('.sheet .qopt').forEach(x=>x.disabled=true);
+      if(k===d.a){ b.classList.add('right'); correct++; }
+      else{ b.classList.add('wrong'); document.querySelectorAll('.sheet .qopt')[d.a].classList.add('right'); logErr('vocab', p[0], p[1], 'pazienti'); }
+      $('#pzFb').innerHTML=`<div class="mnemo" style="margin-top:10px">${roastFb(k===d.a)}<b>${k===d.a?'✓':'✗'} </b>${esc(p[3])}</div><button class="btn dark block" id="pzN">${i<items.length-1?'Next →':'Score →'}</button>`;
+      $('#pzN').onclick=()=>{i++;show();};
+    });
+  }
+  show();
+}
+function pazienteBrowse(){
+  showSheet('<div class="eyebrow r">🗣 COME PARLANO I PAZIENTI · ALL '+PAZIENTE_BANK.length+'</div>',
+    PAZIENTE_BANK.map((p,i)=>`
+    <div class="card flat" style="margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
+        <b style="font-size:.98rem">«${esc(p[0])}»</b>
+        <span style="display:flex;gap:6px"><button class="btn sm" data-say="${esc(p[0])}" style="box-shadow:none;padding:3px 9px">🔊</button>
+        <button class="btn sm green" data-pzadd="${i}" style="box-shadow:none;padding:3px 9px" ${S.deck.find(x=>x.id==='pz-'+i)?'disabled':''}>${S.deck.find(x=>x.id==='pz-'+i)?'✓':'➕'}</button></span>
+      </div>
+      <div style="font-size:.86rem;margin-top:2px">= ${esc(p[1])}</div>
+      <div class="muted" style="font-size:.78rem;margin-top:4px">${esc(p[3])}</div>
+    </div>`).join(''));
+  document.querySelectorAll('.sheet [data-say]').forEach(b=>b.onclick=()=>speak(b.dataset.say));
+  document.querySelectorAll('.sheet [data-pzadd]').forEach(b=>b.onclick=()=>{
+    const i=+b.dataset.pzadd, p=PAZIENTE_BANK[i];
+    if(S.deck.find(x=>x.id==='pz-'+i)) return;
+    S.deck.push({id:'pz-'+i, it:p[0], en:p[1], mn:p[3].split('. ')[0]+'.', ex:'', due:Date.now(), ivl:0, ease:2.5, lapses:0});
+    save(); b.textContent='✓'; b.disabled=true; toast('In Ripasso ⚡');
+  });
+}
+
 function openMedDeck(name){
   const cards=MED_DECKS[name];
   showSheet(`<div class="eyebrow g">DECK · ${esc(name).toUpperCase()}</div>`,
@@ -2399,25 +2537,35 @@ Judge it. Respond ONLY with JSON: {"usesRule":true/false,"correct":true/false,"f
   };
 }
 
-async function grammarDrill(g){
-  sheetBody('<div style="text-align:center;padding:40px 0"><span class="spinner"></span><p class="muted" style="margin-top:8px">Building a drill on: '+esc(g.t)+'…</p></div>');
+async function grammarDrill(g, fresh){
+  const bank = !fresh && (typeof GRAMMAR_DRILLS!=='undefined') && GRAMMAR_DRILLS[g.id];
+  if(bank){ runGrammarDrill(g, samplePool('r-'+g.id, bank, 5).map(d=>{const x=dealDrill(d); return {s:x.q,o:x.o,a:x.a,w:x.w};}), true); return; }
+  sheetBody('<div style="text-align:center;padding:40px 0"><span class="spinner"></span><p class="muted" style="margin-top:8px">Building a fresh drill on: '+esc(g.t)+'…</p></div>');
   const set=await ai([{role:'user',content:`Italian grammar drill for a ${S.level} learner on the rule: "${g.t}". The rule's core: WHEN ${g.when.join(' · ')} | TRAP: ${g.trap}. Their known weak examples: ${JSON.stringify((S.errLog[g.err]||{}).ex||[])}.
 Generate 5 two-option fill-in items testing EXACTLY this rule, at least one built on the trap. Respond ONLY with JSON:
 {"items":[{"s":"sentence with ___","o":["option A","option B"],"a":0,"w":"max 14-word why, in terms of the rule"}]}`}],'Meticulous Italian grammar drill author. Both options must be real forms; only one fits the context. JSON only.',true,2200);
   if(!set||!set.items){ sheetBody('<div class="card">⚠ Couldn\'t build — reopen and retry.</div>'); return; }
+  runGrammarDrill(g, set.items, false);
+}
+
+function runGrammarDrill(g, items, isStatic){
   let i=0, correct=0;
   function show(){
-    if(i>=set.items.length){
+    if(i>=items.length){
       const won=correct>=4;
       if(won && S.errLog[g.err]) S.errLog[g.err].n=Math.max(0,S.errLog[g.err].n-2);
       const gp=S.gramPractice[g.id]||(S.gramPractice[g.id]={}); gp.drill=Math.max(gp.drill||0,correct); gp.drillTs=Date.now();
-      gainXP(15); touchStreak(); save(); if(won&&correct===set.items.length) celebrate(24);
-      sheetBody(`<div style="text-align:center;padding:20px 0"><div style="font-size:3rem">${won?'📖':'📚'}</div><h1>${correct}/${set.items.length}</h1><p class="muted">${won?'Rule installing. Gap counter reduced.':'Reread the WHEN and the TRAP — then run it again.'} +15 XP</p><button class="btn primary block" id="gDone" style="margin-top:14px">Back to the rule →</button></div>`);
-      $('#gDone').onclick=()=>grammarSheet(g); return;
+      gainXP(15); touchStreak(); save(); if(won&&correct===items.length) celebrate(24);
+      sheetBody(`<div style="text-align:center;padding:20px 0"><div style="font-size:3rem">${won?'📖':'📚'}</div><h1>${correct}/${items.length}</h1><p class="muted">${won?'Rule installing. Gap counter reduced.':'Reread the WHEN and the TRAP — then run it again.'} +15 XP</p>
+        <button class="btn primary block" id="gDone" style="margin-top:14px">Back to the rule →</button>
+        ${isStatic?'<button class="btn dark block" id="gFresh" style="margin-top:8px">🎲 Fresh AI questions →</button>':''}</div>`);
+      $('#gDone').onclick=()=>grammarSheet(g);
+      const gf=$('#gFresh'); if(gf) gf.onclick=()=>grammarDrill(g,true);
+      return;
     }
-    const it=set.items[i];
+    const it=items[i];
     sheetBody(`
-      <div class="eyebrow b">${esc(g.t).toUpperCase()} · ${i+1}/${set.items.length}</div>
+      <div class="eyebrow b">${esc(g.t).toUpperCase()} · ${i+1}/${items.length}</div>
       <div class="card"><h2 style="font-size:1.1rem">${esc(it.s)}</h2></div>
       ${it.o.map((o,k)=>`<button class="qopt" data-k="${k}">${esc(o)}</button>`).join('')}
       <div id="gFb"></div>`);
@@ -2427,7 +2575,7 @@ Generate 5 two-option fill-in items testing EXACTLY this rule, at least one buil
       if(k===it.a){b.classList.add('right');correct++;}
       else{b.classList.add('wrong');document.querySelectorAll('.sheet .qopt')[it.a].classList.add('right');
         logErr(g.err, it.s.replace('___',it.o[k]), it.s.replace('___',it.o[it.a]), 'grammatica');}
-      $('#gFb').innerHTML=`<div class="mnemo" style="margin-top:10px">${roastFb(k===it.a)}<b>${k===it.a?'✓':'✗'} </b>${esc(it.w)}</div><button class="btn dark block" id="gN">${i<set.items.length-1?'Next →':'Result →'}</button>`;
+      $('#gFb').innerHTML=`<div class="mnemo" style="margin-top:10px">${roastFb(k===it.a)}<b>${k===it.a?'✓':'✗'} </b>${esc(it.w)}</div><button class="btn dark block" id="gN">${i<items.length-1?'Next →':'Result →'}</button>`;
       $('#gN').onclick=()=>{i++;show();};
     });
   }
