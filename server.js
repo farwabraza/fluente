@@ -149,37 +149,57 @@ let pool = null;
 if (process.env.DATABASE_URL) {
   const { Pool } = require("pg");
   pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
-  pool.query(`CREATE TABLE IF NOT EXISTS fluente_users(
-    username TEXT PRIMARY KEY,
-    pinhash  TEXT NOT NULL,
-    state    JSONB,
-    updated_at BIGINT DEFAULT 0)`).then(() => console.log("DB ready — cloud sync ON"))
-    .catch((e) => console.error("DB init failed:", e.message));
+  (async () => {
+    await pool.query(`CREATE TABLE IF NOT EXISTS fluente_users(
+      username TEXT PRIMARY KEY,
+      pinhash  TEXT NOT NULL,
+      state    JSONB,
+      updated_at BIGINT DEFAULT 0)`);
+    // v7.1 — who-is-using-this visibility + invite gating (idempotent migrations)
+    await pool.query(`ALTER TABLE fluente_users ADD COLUMN IF NOT EXISTS created_at BIGINT DEFAULT 0`);
+    await pool.query(`ALTER TABLE fluente_users ADD COLUMN IF NOT EXISTS last_seen BIGINT DEFAULT 0`);
+    await pool.query(`ALTER TABLE fluente_users ADD COLUMN IF NOT EXISTS invite_code TEXT`);
+    await pool.query(`CREATE TABLE IF NOT EXISTS fluente_invites(
+      code TEXT PRIMARY KEY,
+      note TEXT,
+      created_at BIGINT,
+      used_by TEXT,
+      used_at BIGINT)`);
+    console.log("DB ready — cloud sync ON");
+  })().catch((e) => console.error("DB init failed:", e.message));
 } else {
   console.log("No DATABASE_URL — running in device-only mode (no cloud sync).");
 }
 const hashPin = (u, p) => crypto.scryptSync(String(p), "fluente:" + u.toLowerCase(), 32).toString("hex");
 const saneUser = (s) => typeof s === "string" && /^[a-z0-9_.-]{3,24}$/i.test(s);
 
-// Sign in OR create account (first login with a new name creates it)
+// Sign in. Creating a NEW account requires a valid, unused invite code
+// (generated in the admin panel, sent to the person by email by the admin).
+// Accounts that already exist sign in with username + PIN as before.
 app.post("/api/auth", rateLimit, async (req, res) => {
   if (!pool) return res.status(503).json({ error: { message: "Sync not configured on the server." } });
-  const { username, pin } = req.body || {};
+  const { username, pin, invite } = req.body || {};
   if (!saneUser(username) || !pin || String(pin).length < 4)
     return res.status(400).json({ error: { message: "Username: 3–24 letters/numbers. PIN: at least 4 characters." } });
   const u = username.toLowerCase(), h = hashPin(u, pin);
   try {
     const r = await pool.query("SELECT pinhash, state, updated_at FROM fluente_users WHERE username=$1", [u]);
     if (!r.rows.length) {
-      await pool.query("INSERT INTO fluente_users(username,pinhash) VALUES($1,$2)", [u, h]);
+      const code = String(invite || "").trim().toUpperCase();
+      if (!code) return res.status(403).json({ needInvite: true, error: { message: "New accounts need an invite code — check the email from your admin, or ask for one." } });
+      // consume atomically: only succeeds if the code exists and is unused
+      const inv = await pool.query("UPDATE fluente_invites SET used_by=$2, used_at=$3 WHERE code=$1 AND used_by IS NULL RETURNING code", [code, u, Date.now()]);
+      if (!inv.rows.length) return res.status(403).json({ needInvite: true, error: { message: "That invite code is invalid or already used — each code works exactly once." } });
+      await pool.query("INSERT INTO fluente_users(username,pinhash,created_at,last_seen,invite_code) VALUES($1,$2,$3,$3,$4)", [u, h, Date.now(), code]);
       return res.json({ ok: true, created: true, state: null, updatedAt: 0 });
     }
     if (r.rows[0].pinhash !== h) return res.status(401).json({ error: { message: "Wrong PIN for this username." } });
+    pool.query("UPDATE fluente_users SET last_seen=$2 WHERE username=$1", [u, Date.now()]).catch(() => {});
     res.json({ ok: true, created: false, state: r.rows[0].state, updatedAt: +r.rows[0].updated_at || 0 });
   } catch (e) { res.status(500).json({ error: { message: "DB error: " + e.message } }); }
 });
 
-// Save state to the cloud
+// Save state to the cloud (also refreshes last_seen — this is the heartbeat)
 app.put("/api/state", rateLimit, async (req, res) => {
   if (!pool) return res.status(503).json({ error: { message: "Sync not configured." } });
   const { username, pin, state, updatedAt } = req.body || {};
@@ -188,10 +208,57 @@ app.put("/api/state", rateLimit, async (req, res) => {
   try {
     const r = await pool.query("SELECT pinhash FROM fluente_users WHERE username=$1", [u]);
     if (!r.rows.length || r.rows[0].pinhash !== h) return res.status(401).json({ error: { message: "Auth failed." } });
-    await pool.query("UPDATE fluente_users SET state=$2, updated_at=$3 WHERE username=$1", [u, state, updatedAt || Date.now()]);
+    await pool.query("UPDATE fluente_users SET state=$2, updated_at=$3, last_seen=$4 WHERE username=$1", [u, state, updatedAt || Date.now(), Date.now()]);
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: { message: "DB error: " + e.message } }); }
 });
 
+// ---------- ADMIN (needs ADMIN_KEY env secret; UI at /admin.html) ----------
+function adminAuth(req, res, next) {
+  const k = process.env.ADMIN_KEY;
+  if (!k) return res.status(503).json({ error: { message: "ADMIN_KEY is not set on the server — add it as a secret (any long random string) to enable the admin panel." } });
+  if ((req.headers["x-admin-key"] || "") !== k) return res.status(401).json({ error: { message: "Wrong admin key." } });
+  next();
+}
+const INVITE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // no 0/O/1/I/L — codes get read out loud
+function makeInviteCode() {
+  const pick = (n) => Array.from({ length: n }, () => INVITE_ALPHABET[crypto.randomInt(INVITE_ALPHABET.length)]).join("");
+  return "FLU-" + pick(4) + "-" + pick(4);
+}
+
+// Everything the admin needs on one call: users (who + when), invites, today's AI usage
+app.get("/api/admin/overview", rateLimit, adminAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: { message: "No DATABASE_URL — accounts are off, so there are no users to list." } });
+  try {
+    const users = await pool.query("SELECT username, created_at, last_seen, invite_code FROM fluente_users ORDER BY last_seen DESC");
+    const invites = await pool.query("SELECT code, note, created_at, used_by, used_at FROM fluente_invites ORDER BY created_at DESC");
+    const today = new Date().toISOString().slice(0, 10);
+    // in-memory counters: today's AI calls per account/IP (approximate — resets if the server restarts)
+    const aiToday = dailyKey === today ? [...daily.entries()].map(([k, n]) => ({ key: k, n })).sort((a, b) => b.n - a.n) : [];
+    res.json({ ok: true, users: users.rows, invites: invites.rows, aiToday, rateLimitPerMin: RATE_PER_MIN, dailyCap: parseInt(process.env.DAILY_AI_LIMIT) || 0 });
+  } catch (e) { res.status(500).json({ error: { message: "DB error: " + e.message } }); }
+});
+
+app.post("/api/admin/invite", rateLimit, adminAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: { message: "No DATABASE_URL — invites need the database." } });
+  const note = String((req.body || {}).note || "").slice(0, 120);
+  try {
+    const code = makeInviteCode();
+    await pool.query("INSERT INTO fluente_invites(code,note,created_at) VALUES($1,$2,$3)", [code, note, Date.now()]);
+    res.json({ ok: true, code });
+  } catch (e) { res.status(500).json({ error: { message: "DB error: " + e.message } }); }
+});
+
+app.delete("/api/admin/invite/:code", rateLimit, adminAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: { message: "No DATABASE_URL." } });
+  try {
+    const r = await pool.query("DELETE FROM fluente_invites WHERE code=$1 AND used_by IS NULL", [String(req.params.code || "").toUpperCase()]);
+    res.json({ ok: true, deleted: r.rowCount > 0 }); // used codes are history — they can't be deleted
+  } catch (e) { res.status(500).json({ error: { message: "DB error: " + e.message } }); }
+});
+
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, "0.0.0.0", () => console.log("FLUENTE in partenza → http://localhost:" + PORT));
+if (require.main === module) {
+  app.listen(PORT, "0.0.0.0", () => console.log("FLUENTE in partenza → http://localhost:" + PORT));
+}
+module.exports = { app, _test: { setPool: (p) => { pool = p; } } };

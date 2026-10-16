@@ -672,6 +672,77 @@ setTimeout(async () => {
     if (!html.includes("u:(CREDS&&CREDS.username)||undefined")) throw new Error("client doesn't send username");
   });
 
+  // ---- v7.1: invite-gated accounts + admin visibility ----
+  await T("login screen has the invite field and sends it with auth", () => {
+    w.eval("renderLogin()");
+    if (!w.document.querySelector("#lgInvite")) throw new Error("invite input missing");
+    if (!html.includes("JSON.stringify({username,pin,invite})")) throw new Error("invite not sent to /api/auth");
+    if (!html.includes("d.needInvite")) throw new Error("needInvite nudge missing");
+    w.eval("localStorage.setItem('fluente-skip-login','1'); enterApp();");
+  });
+
+  await T("server: invite-gated signup, one-time codes, last-seen, admin API", async () => {
+    process.env.ADMIN_KEY = "test-admin-key";
+    const srv = require("./server.js");
+    const users = new Map(), invites = new Map();
+    // minimal in-memory mock of the pg pool, covering exactly the queries server.js makes
+    srv._test.setPool({ query: async (sql, p = []) => {
+      sql = sql.replace(/\s+/g, " ");
+      if (sql.startsWith("SELECT pinhash, state, updated_at FROM fluente_users")) { const u = users.get(p[0]); return { rows: u ? [u] : [] }; }
+      if (sql.startsWith("SELECT pinhash FROM fluente_users")) { const u = users.get(p[0]); return { rows: u ? [{ pinhash: u.pinhash }] : [] }; }
+      if (sql.startsWith("UPDATE fluente_invites SET used_by")) {
+        const inv = invites.get(p[0]);
+        if (!inv || inv.used_by) return { rows: [] };
+        inv.used_by = p[1]; inv.used_at = p[2]; return { rows: [{ code: p[0] }] };
+      }
+      if (sql.startsWith("INSERT INTO fluente_users")) { users.set(p[0], { username: p[0], pinhash: p[1], created_at: p[2], last_seen: p[2], invite_code: p[3], state: null, updated_at: 0 }); return { rows: [] }; }
+      if (sql.startsWith("UPDATE fluente_users SET last_seen")) { const u = users.get(p[0]); if (u) u.last_seen = p[1]; return { rows: [] }; }
+      if (sql.startsWith("UPDATE fluente_users SET state")) { const u = users.get(p[0]); if (u) { u.state = p[1]; u.updated_at = p[2]; u.last_seen = p[3]; } return { rows: [] }; }
+      if (sql.startsWith("SELECT username, created_at, last_seen, invite_code")) return { rows: [...users.values()] };
+      if (sql.startsWith("SELECT code, note, created_at, used_by, used_at")) return { rows: [...invites.values()] };
+      if (sql.startsWith("INSERT INTO fluente_invites")) { invites.set(p[0], { code: p[0], note: p[1], created_at: p[2], used_by: null, used_at: null }); return { rows: [] }; }
+      if (sql.startsWith("DELETE FROM fluente_invites")) { const i = invites.get(p[0]); const del = !!(i && !i.used_by); if (del) invites.delete(p[0]); return { rowCount: del ? 1 : 0 }; }
+      throw new Error("mock pool: unhandled query: " + sql.slice(0, 70));
+    }});
+    const server = srv.app.listen(0);
+    const port = server.address().port;
+    const call = (method, path, body, headers) => fetch(`http://127.0.0.1:${port}${path}`, { method, headers: Object.assign({ "Content-Type": "application/json" }, headers || {}), body: body ? JSON.stringify(body) : undefined }).then(async (r) => ({ status: r.status, body: await r.json() }));
+    try {
+      let r = await call("POST", "/api/auth", { username: "newdoc", pin: "1234" });
+      if (r.status !== 403 || !r.body.needInvite) throw new Error("signup without invite allowed: " + r.status);
+      r = await call("POST", "/api/admin/invite", { note: "test@x" }, { "x-admin-key": "nope" });
+      if (r.status !== 401) throw new Error("wrong admin key accepted");
+      r = await call("POST", "/api/admin/invite", { note: "test@x" }, { "x-admin-key": "test-admin-key" });
+      if (!r.body.ok || !/^FLU-[A-HJ-KM-NP-Z2-9]{4}-[A-HJ-KM-NP-Z2-9]{4}$/.test(r.body.code)) throw new Error("bad code: " + JSON.stringify(r.body));
+      const code = r.body.code;
+      r = await call("POST", "/api/auth", { username: "newdoc", pin: "1234", invite: code.toLowerCase() });
+      if (!r.body.created) throw new Error("signup with code failed: " + JSON.stringify(r.body));
+      r = await call("POST", "/api/auth", { username: "seconduser", pin: "1234", invite: code });
+      if (r.status !== 403) throw new Error("used code accepted twice");
+      r = await call("POST", "/api/auth", { username: "newdoc", pin: "1234" });
+      if (!r.body.ok || r.body.created) throw new Error("existing login broken: " + JSON.stringify(r.body));
+      r = await call("POST", "/api/auth", { username: "newdoc", pin: "9999" });
+      if (r.status !== 401) throw new Error("wrong pin accepted");
+      r = await call("GET", "/api/admin/overview", null, { "x-admin-key": "test-admin-key" });
+      if (r.body.users.length !== 1 || r.body.users[0].username !== "newdoc") throw new Error("users list wrong");
+      if (!r.body.users[0].last_seen) throw new Error("last_seen not tracked");
+      if (r.body.invites[0].used_by !== "newdoc") throw new Error("invite not marked used");
+      const g = await call("POST", "/api/admin/invite", { note: "spare" }, { "x-admin-key": "test-admin-key" });
+      r = await call("DELETE", "/api/admin/invite/" + g.body.code, null, { "x-admin-key": "test-admin-key" });
+      if (!r.body.deleted) throw new Error("revoking an unused code failed");
+      r = await call("DELETE", "/api/admin/invite/" + code, null, { "x-admin-key": "test-admin-key" });
+      if (r.body.deleted) throw new Error("a USED code was deleted — history must be immutable");
+    } finally { server.close(); }
+  });
+
+  await T("admin panel page exists and talks to the admin API", () => {
+    const ad = fs.readFileSync("public/admin.html", "utf8");
+    for (const bit of ["/api/admin/overview", "/api/admin/invite", "x-admin-key", "noindex"]) {
+      if (!ad.includes(bit)) throw new Error(bit + " missing from admin.html");
+    }
+  });
+
+
 
   await T("client ai() retries a 429 with backoff and succeeds", async () => {
     let calls = 0;

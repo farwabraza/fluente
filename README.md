@@ -8,6 +8,18 @@ with mnemonics, leech rescue, and production-direction recall.
 
 ---
 
+## What's new in v7.1 — invite codes & the admin panel (know your users)
+
+Two problems, one build: (a) "first sign-in creates the account" meant anyone with the URL could mint accounts and burn API credits; (b) there was zero visibility of who exists or who's active — no basis for "do we need to upgrade the server?".
+
+1. **🎟 Invite-gated signup.** Creating a NEW account now requires a one-time code (`FLU-XXXX-XXXX`). You generate codes in the admin panel (with a note — e.g. the person's email) and **email them yourself** (the app sends no mail). Signup consumes the code forever and records which account used it. Existing accounts are grandfathered — they sign in with username + PIN exactly as before.
+2. **📊 `/admin.html` — the control panel.** Gated by a new `ADMIN_KEY` secret. Shows: every account with **joined** and **last seen** (refreshed on every sign-in and cloud sync — this answers "how many users do we actually have"), **today's AI calls per account** (the upgrade-the-server signal, from the rate-limit counters), current limits, and the invite list (generate / copy / revoke-unused; used codes are permanent history).
+3. **Setup:** add one secret — `ADMIN_KEY` = any long random string. Open `/admin.html`, paste it once (it's remembered on your device).
+
+(67 automated checks, including a mocked-database server suite covering the invite lifecycle end-to-end.)
+
+---
+
 ## What's new in v7 — instant lessons (the static-content rebuild)
 
 The problem: every lesson was a live AI call — 20–90 seconds of spinner, token cost on every tap, quality a dice roll, and three users now sharing the rate limit. The fix: **the entire curriculum is now hand-written and ships inside the app** (`public/lessons.js`), like the grammar rulebook always was. AI spend now goes only where it's irreplaceable: conversation, correction of *your* sentences, and grading.
@@ -153,6 +165,7 @@ Render's free tier still includes web services — you're only charged if the se
 **Setup on any of them** — add the secrets/environment variables:
 - `ANTHROPIC_API_KEY` = `sk-ant-...` (console.anthropic.com) — required
 - `DATABASE_URL` — Neon connection string → enables logins + cross-device sync
+- `ADMIN_KEY` — any long random string → enables `/admin.html` (users, usage, invite codes)
 - `TRANSCRIBE_API_KEY` — free at console.groq.com → enables the iPhone mic
 - Optional: `CLAUDE_MODEL`, `DAILY_AI_LIMIT`, `RATE_LIMIT_PER_MIN`, `TRANSCRIBE_BASE_URL`, `TRANSCRIBE_MODEL`
 
@@ -205,6 +218,7 @@ Postgres you control) and a terms line; if selling to EU consumers, note GDPR ba
 |---|---|
 | App (all of it) | `public/index.html` |
 | The hand-written curriculum: lessons, drill banks, checkpoint pools, patient phrases | `public/lessons.js` |
+| Admin panel (users, usage, invite codes) | `public/admin.html` |
 | AI proxy + rate limits + accounts | `server.js` |
 | PWA install/offline | `public/manifest.json`, `public/sw.js` |
 | Headless test suite (43 checks, dev-only) | `smoke.js` — `npm i jsdom --no-save && node smoke.js` |
